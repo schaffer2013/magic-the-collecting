@@ -1,128 +1,142 @@
 from __future__ import annotations
 
+from registration_service.models import CardState, CollectionCard, Finish, UnverifiedCard, ValidationSource, utcnow
+from registration_service.config import settings
+from registration_service.services import process_next_unprocessed_card
+
+
+def create_collection(client, name="Main"):
+    return client.post("/collections", json={"name": name}).json()
+
+
+def intake(client, collection_id, image=b"image-bytes", expected=None):
+    data = {}
+    if expected:
+        data["sorter_expected_scryfall_id"] = expected
+    return client.post(
+        f"/collections/{collection_id}/unverified-cards",
+        data=data,
+        files={"raw_image": ("card.jpg", image, "image/jpeg")},
+    )
+
 
 def test_health(client):
-    response = client.get("/health")
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    api, _ = client
+    assert api.get("/health").json() == {"status": "ok"}
 
 
-def _submit_job(client, collection_id: int, sequence: int = 1):
-    return client.post(
-        "/registration-jobs",
-        data={
-            "sorter_run_id": "run-1",
-            "sorter_card_seq": str(sequence),
-            "collection_id": str(collection_id),
-            "captured_at": "2026-05-17T19:00:00Z",
-            "source_pile": "A1",
-            "destination_pile": "B1",
-        },
-        files={"raw_image": ("card.jpg", b"image-bytes", "image/jpeg")},
-    )
+def test_tests_use_isolated_test_environment(client):
+    _, _ = client
+    assert settings.app_env == "test"
+    assert "raw-images" in str(settings.raw_image_dir)
 
 
-def test_submission_creates_unverified_card_but_not_collection_card(client):
-    collection = client.post("/collections", json={"name": "Main"}).json()
-    response = _submit_job(client, collection["collection_id"])
-    assert response.status_code == 201
-
-    cards = client.get(f"/collections/{collection['collection_id']}/cards").json()
-    assert cards == []
-    unverified_cards = client.get(
-        f"/collections/{collection['collection_id']}/unverified-cards"
-    ).json()
-    assert len(unverified_cards) == 1
-    assert unverified_cards[0]["card_state"] == "unprocessed"
-    assert unverified_cards[0]["raw_image_uri"]
-
-    export = client.get(f"/collections/{collection['collection_id']}/export.csv")
-    assert export.status_code == 200
-    lines = export.text.strip().splitlines()
-    assert len(lines) == 1
-    assert "source_unverified_card_id" in lines[0]
-
-
-def test_multiple_collections_are_supported(client):
-    main = client.post("/collections", json={"name": "Main"}).json()
-    trade = client.post("/collections", json={"name": "Trade"}).json()
-
-    collections = client.get("/collections").json()
-    assert [collection["collection_id"] for collection in collections] == [
-        main["collection_id"],
-        trade["collection_id"],
-    ]
-
-
-def test_registration_job_submission_is_idempotent(client):
-    collection = client.post("/collections", json={"name": "Main"}).json()
-    first = _submit_job(client, collection["collection_id"])
-    second = _submit_job(client, collection["collection_id"])
-
+def test_intake_summary_and_duplicate_conflict(client):
+    api, _ = client
+    collection = create_collection(api)
+    first = intake(api, collection["collection_id"])
+    duplicate = intake(api, collection["collection_id"])
     assert first.status_code == 201
-    assert second.status_code == 200
-    assert first.json()["job_id"] == second.json()["job_id"]
+    assert first.json()["card_state"] == "unprocessed"
+    assert duplicate.status_code == 409
+    summary = api.get(f"/collections/{collection['collection_id']}/summary").json()
+    assert summary["unprocessed_count"] == 1
+    assert summary["trusted_collection_card_count"] == 0
 
 
-def test_unverified_cards_can_be_filtered_by_card_state(client):
-    collection = client.post("/collections", json={"name": "Main"}).json()
-    _submit_job(client, collection["collection_id"])
+def test_duplicate_hashes_are_collection_scoped(client):
+    api, _ = client
+    main = create_collection(api, "Main")
+    trade = create_collection(api, "Trade")
+    assert intake(api, main["collection_id"]).status_code == 201
+    assert intake(api, trade["collection_id"]).status_code == 201
 
-    unprocessed = client.get(
+
+def test_worker_moves_one_card_to_machine_recognized(client):
+    api, Session = client
+    collection = create_collection(api)
+    intake(api, collection["collection_id"], expected="expected-id")
+    with Session() as db:
+        processed = process_next_unprocessed_card(db)
+        assert processed is not None
+        assert processed.card_state == CardState.machine_recognized
+    ready = api.get(
         f"/collections/{collection['collection_id']}/unverified-cards",
-        params={"card_state": "unprocessed"},
-    )
-    verified = client.get(
-        f"/collections/{collection['collection_id']}/unverified-cards",
-        params={"card_state": "human_verified"},
-    )
-
-    assert len(unprocessed.json()) == 1
-    assert verified.json() == []
+        params={"card_state": "machine_recognized"},
+    ).json()
+    assert ready[0]["machine_candidate_scryfall_ids"] == ["expected-id"]
 
 
-def test_review_card_endpoint_returns_raw_image_and_expected_identity(client):
-    collection = client.post("/collections", json={"name": "Main"}).json()
-    response = client.post(
-        "/registration-jobs",
-        data={
-            "sorter_run_id": "run-1",
-            "sorter_card_seq": "1",
-            "collection_id": str(collection["collection_id"]),
-            "captured_at": "2026-05-17T19:00:00Z",
-            "source_pile": "A1",
-            "destination_pile": "B1",
-            "sorter_expected_scryfall_id": "expected-id",
-        },
-        files={"raw_image": ("card.jpg", b"image-bytes", "image/jpeg")},
-    )
-    assert response.status_code == 201
-
-    review_card = client.get("/review-cards/next", params={"strategy": "oldest"}).json()
-    assert review_card["collection_id"] == collection["collection_id"]
-    assert review_card["expected_scryfall_id"] == "expected-id"
-
-    image_response = client.get(review_card["raw_image_url"])
-    assert image_response.status_code == 200
-    assert image_response.content == b"image-bytes"
+def test_review_queue_is_collection_scoped_and_machine_only(client):
+    api, Session = client
+    main = create_collection(api, "Main")
+    trade = create_collection(api, "Trade")
+    intake(api, main["collection_id"], image=b"main")
+    intake(api, trade["collection_id"], image=b"trade")
+    with Session() as db:
+        process_next_unprocessed_card(db)
+    assert api.get(f"/collections/{main['collection_id']}/review-cards/next").status_code == 200
+    assert api.get(f"/collections/{trade['collection_id']}/review-cards/next").status_code == 404
 
 
-def test_human_verify_promotes_card_to_human_verified(client):
-    collection = client.post("/collections", json={"name": "Main"}).json()
-    _submit_job(client, collection["collection_id"])
-    card = client.get("/review-cards/next").json()
-
-    response = client.post(
+def test_verification_creates_trusted_card(client):
+    api, Session = client
+    collection = create_collection(api)
+    card = intake(api, collection["collection_id"]).json()
+    with Session() as db:
+        process_next_unprocessed_card(db)
+    verified = api.post(
         f"/unverified-cards/{card['unverified_card_id']}/verify",
-        json={
-            "final_scryfall_id": "verified-id",
-            "name": "Llanowar Elves",
-            "set_code": "7ed",
-            "collector_number": "253",
-            "foil": False,
-            "language": "en",
-        },
+        json={"final_scryfall_id": "verified-id", "finish": "nonfoil"},
     )
-    assert response.status_code == 200
-    assert response.json()["scryfall_id"] == "verified-id"
-    assert response.json()["source_unverified_card_id"] == card["unverified_card_id"]
+    assert verified.status_code == 200
+    assert verified.json()["source_unverified_card_id"] == card["unverified_card_id"]
+    cards = api.get(f"/collections/{collection['collection_id']}/cards").json()
+    assert len(cards) == 1
+
+
+def test_transfers_are_atomic_and_report_all_failures(client):
+    api, Session = client
+    source = create_collection(api, "Source")
+    target = create_collection(api, "Target")
+    with Session() as db:
+        card = CollectionCard(
+            collection_id=source["collection_id"],
+            scryfall_id="id",
+            name="Name",
+            set_code="set",
+            collector_number="1",
+            finish=Finish.nonfoil,
+            validation_source=ValidationSource.human,
+            validated_at=utcnow(),
+        )
+        db.add(card)
+        db.commit()
+        db.refresh(card)
+        card_id = card.collection_card_id
+    failed = api.post(
+        "/collection-cards/transfer",
+        json={"collection_card_ids": [card_id, "missing"], "target_collection_id": target["collection_id"]},
+    )
+    assert failed.status_code == 409
+    assert failed.json()["detail"]["failures"][0]["collection_card_id"] == "missing"
+    assert api.get(f"/collections/{source['collection_id']}/cards").json()[0]["collection_card_id"] == card_id
+
+
+def test_exports_and_ui_smoke(client):
+    api, Session = client
+    collection = create_collection(api)
+    unverified = intake(api, collection["collection_id"]).json()
+    with Session() as db:
+        process_next_unprocessed_card(db)
+    api.post(
+        f"/unverified-cards/{unverified['unverified_card_id']}/verify",
+        json={"final_scryfall_id": "verified-id", "finish": "foil"},
+    )
+    assert "collection_card_id" in api.get(f"/collections/{collection['collection_id']}/export.csv").text
+    assert "unverified_card_id" in api.get(
+        f"/collections/{collection['collection_id']}/unverified-cards/export.csv"
+    ).text
+    assert api.get("/").status_code == 200
+    assert api.get(f"/ui/collections/{collection['collection_id']}").status_code == 200
+    assert api.get(f"/ui/collections/{collection['collection_id']}/queue").status_code == 200
