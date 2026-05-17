@@ -34,6 +34,9 @@ before considering the work complete.
   message and its size.
 - Use branches to group related work, then merge completed work back into
   `main` intentionally after validation.
+- Agents may merge their own completed branches back into `main` when the work
+  is coherent, validated, and ready; they do not need to wait for separate
+  permission to merge unless the user has asked for review first.
 - Before merging, run the relevant checks and make sure the branch history is
   understandable enough that future maintainers can follow what changed and
   why.
