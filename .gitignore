@@ -18,6 +18,7 @@ dist/
 # Local service data
 registration_service.db
 data/raw-images/
+data/card-engine/
 .env.prod
 .env.test
 

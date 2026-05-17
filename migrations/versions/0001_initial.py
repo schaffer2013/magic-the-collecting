@@ -11,12 +11,20 @@ depends_on = None
 card_state = sa.Enum("unprocessed", "machine_recognized", "human_verified", name="cardstate")
 finish = sa.Enum("nonfoil", "foil", "etched", "glossy", name="finish")
 validation_source = sa.Enum("human", name="validationsource")
+review_decision_kind = sa.Enum(
+    "exactly_correct",
+    "right_card_wrong_printing",
+    "wrong_card",
+    "unreadable",
+    name="reviewdecisionkind",
+)
 
 
 def upgrade():
     card_state.create(op.get_bind(), checkfirst=True)
     finish.create(op.get_bind(), checkfirst=True)
     validation_source.create(op.get_bind(), checkfirst=True)
+    review_decision_kind.create(op.get_bind(), checkfirst=True)
     op.create_table(
         "collections",
         sa.Column("collection_id", sa.String(36), primary_key=True),
@@ -44,6 +52,9 @@ def upgrade():
         sa.Column("bounding_box", sa.Text()),
         sa.Column("expected_scryfall_id", sa.String(120)),
         sa.Column("machine_candidate_scryfall_ids", sa.Text(), nullable=False),
+        sa.Column("machine_confidence", sa.Float()),
+        sa.Column("machine_debug_payload", sa.Text()),
+        sa.Column("machine_review_reason", sa.String(120)),
         sa.Column("machine_recognized_at", sa.DateTime(timezone=True)),
         sa.Column("inducted_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("verified_at", sa.DateTime(timezone=True)),
@@ -61,13 +72,24 @@ def upgrade():
         sa.Column("validation_source", validation_source, nullable=False),
         sa.Column("validated_at", sa.DateTime(timezone=True), nullable=False),
     )
+    op.create_table(
+        "review_decisions",
+        sa.Column("review_decision_id", sa.String(36), primary_key=True),
+        sa.Column("unverified_card_id", sa.String(36), sa.ForeignKey("unverified_cards.unverified_card_id"), nullable=False),
+        sa.Column("decision_kind", review_decision_kind, nullable=False),
+        sa.Column("final_scryfall_id", sa.String(120)),
+        sa.Column("notes", sa.Text()),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    )
 
 
 def downgrade():
     op.drop_table("collection_cards")
+    op.drop_table("review_decisions")
     op.drop_table("unverified_cards")
     op.drop_table("duplicate_image_hashes")
     op.drop_table("collections")
     validation_source.drop(op.get_bind(), checkfirst=True)
+    review_decision_kind.drop(op.get_bind(), checkfirst=True)
     finish.drop(op.get_bind(), checkfirst=True)
     card_state.drop(op.get_bind(), checkfirst=True)

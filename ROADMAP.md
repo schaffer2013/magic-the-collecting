@@ -45,16 +45,15 @@ Implemented:
   draggable default bounding boxes
 - automated tests using isolated temporary test storage
 - root-level entrypoint script for starting the local production-like stack
+- host-run local setup/start entrypoints for work before Docker is available
 
 Known intentional gaps:
 
-- catalog/recognition integration is still a placeholder seam
-- no authentication yet
-- Docker/Postgres stacks have not been exercised in this environment because
+- Docker/Postgres stacks have not yet been exercised in this environment because
   Docker is unavailable locally
-- UI review page displays the workflow but does not yet submit verification from
-  the browser
-- background garbage collection is modeled but not yet scheduled
+- no authentication yet
+- review decisions are persisted, but unreadable-card follow-up workflows are
+  still intentionally minimal
 
 ## Tier 0 — Preserve project hygiene
 
@@ -62,7 +61,8 @@ Known intentional gaps:
 - [x] Keep meaningful work off `main` until it is ready to merge.
 - [x] Maintain separate prod-like and test local environments.
 - [ ] Verify Compose stacks end-to-end on a machine with Docker installed.
-- [ ] Add a short contributor/dev workflow section once the first full local run
+- [x] Add a host-run local workflow for the current pre-Docker phase.
+- [ ] Add a short contributor/dev workflow section once the first full Docker run
   has been proven.
 
 ## Tier 1 — Finish the first usable vertical slice
@@ -70,13 +70,13 @@ Known intentional gaps:
 Goal: make the current workflow genuinely usable from intake through human
 verification.
 
-- [ ] Replace placeholder catalog metadata with real Scryfall-backed canonical
+- [x] Replace placeholder catalog metadata with real Scryfall-backed canonical
   lookup for verified printing IDs.
-- [ ] Integrate fuzzy-enigma max-accuracy recognition into the worker path.
-- [ ] Persist ordered machine candidates, confidence, and debug evidence.
+- [x] Integrate fuzzy-enigma max-accuracy recognition into the worker path.
+- [x] Persist ordered machine candidates, confidence, and debug evidence.
 - [x] Add browser-side human verification submission from the review UI.
-- [ ] Show canonical reference image beside the raw uploaded card image.
-- [ ] Add review decisions for:
+- [x] Show canonical reference image beside the raw uploaded card image.
+- [x] Add review decisions for:
   - exactly correct
   - right card, wrong printing
   - wrong card
