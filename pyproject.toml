@@ -1,0 +1,22 @@
+[project]
+name = "mtg-registration-service"
+version = "0.1.0"
+description = "Registration and validation service for Magic: The Gathering collections"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115,<1.0",
+    "uvicorn[standard]>=0.34,<1.0",
+    "sqlalchemy>=2.0,<3.0",
+    "pydantic>=2.10,<3.0",
+    "python-multipart>=0.0.20,<1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "httpx>=0.28,<1.0",
+    "pytest>=8.3,<9.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
