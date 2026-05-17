@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import logging
 import random
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -38,6 +39,7 @@ from .config import settings
 
 PACKAGE_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=str(PACKAGE_DIR / "templates"))
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -346,6 +348,13 @@ def transfer_card(
     card.collection_id = payload.target_collection_id
     db.commit()
     db.refresh(card)
+    logger.info(
+        "collection_card_transferred",
+        extra={
+            "collection_card_id": collection_card_id,
+            "target_collection_id": payload.target_collection_id,
+        },
+    )
     return card
 
 
@@ -373,6 +382,13 @@ def transfer_cards(payload: BatchTransferCreate, db: Session = Depends(get_db)) 
     for card in cards_by_id.values():
         card.collection_id = payload.target_collection_id
     db.commit()
+    logger.info(
+        "collection_cards_batch_transferred",
+        extra={
+            "collection_card_ids": payload.collection_card_ids,
+            "target_collection_id": payload.target_collection_id,
+        },
+    )
     return [cards_by_id[card_id] for card_id in payload.collection_card_ids]
 
 
