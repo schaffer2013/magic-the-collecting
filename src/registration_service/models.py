@@ -31,6 +31,13 @@ class Finish(str, enum.Enum):
     glossy = "glossy"
 
 
+class ReviewDecisionKind(str, enum.Enum):
+    exactly_correct = "exactly_correct"
+    right_card_wrong_printing = "right_card_wrong_printing"
+    wrong_card = "wrong_card"
+    unreadable = "unreadable"
+
+
 class Collection(Base):
     __tablename__ = "collections"
 
@@ -103,3 +110,18 @@ class CollectionCard(Base):
 
     collection: Mapped[Collection] = relationship(back_populates="cards")
     source_unverified_card: Mapped[UnverifiedCard | None] = relationship(back_populates="collection_card")
+
+
+class ReviewDecision(Base):
+    __tablename__ = "review_decisions"
+
+    review_decision_id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    unverified_card_id: Mapped[str] = mapped_column(
+        ForeignKey("unverified_cards.unverified_card_id"), nullable=False
+    )
+    decision_kind: Mapped[ReviewDecisionKind] = mapped_column(Enum(ReviewDecisionKind), nullable=False)
+    final_scryfall_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)

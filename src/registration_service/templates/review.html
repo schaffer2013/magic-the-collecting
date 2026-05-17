@@ -14,17 +14,40 @@
     <p><a href="{{ card.overlay_image_url }}">View bounding-box overlay</a></p>
     {% endif %}
   </div>
+  <div>
+    <h2>Expected reference</h2>
+    {% if reference and reference.image_uri %}
+    <img class="review-image" src="{{ reference.image_uri }}" alt="Expected Scryfall reference">
+    <p>{{ reference.name }} · {{ reference.set_code | upper }} {{ reference.collector_number }}</p>
+    {% else %}
+    <p>No expected reference image available.</p>
+    {% endif %}
+  </div>
   <section>
     <p><a href="/ui/collections/{{ collection.collection_id }}/queue">Back to {{ collection.name }} queue</a></p>
     <p><strong>Expected:</strong> {{ card.expected_scryfall_id or "None" }}</p>
     <p><strong>Candidates:</strong> {{ card.machine_candidate_scryfall_ids | join(", ") or "None" }}</p>
     <p><strong>Machine confidence:</strong> {{ card.machine_confidence if card.machine_confidence is not none else "None" }}</p>
     <p><strong>Review reason:</strong> {{ card.machine_review_reason or "None" }}</p>
-    <form id="verify-form" class="stack">
+    <form id="decision-form" class="stack">
+      <label>
+        Review decision
+        <select id="decision-kind" required>
+          <option value="exactly_correct">Exactly correct</option>
+          <option value="right_card_wrong_printing">Right card, wrong printing</option>
+          <option value="wrong_card">Wrong card</option>
+          <option value="unreadable">Unreadable / insufficient evidence</option>
+        </select>
+      </label>
       <label>
         Final Scryfall ID
         <input id="final-scryfall-id" required value="{{ card.expected_scryfall_id or '' }}">
       </label>
+      <label>
+        Find another printing
+        <input id="card-search" placeholder="Search Scryfall printings">
+      </label>
+      <div id="card-search-results" class="search-results"></div>
       <label>
         Finish
         <select id="finish" required>
@@ -34,8 +57,12 @@
           <option value="glossy">Glossy</option>
         </select>
       </label>
+      <label>
+        Notes
+        <textarea id="notes" rows="3" placeholder="Optional reviewer notes"></textarea>
+      </label>
       <div class="actions">
-        <button type="submit">Human verify</button>
+        <button type="submit">Submit review</button>
         <a class="button-link" href="/ui/collections/{{ collection.collection_id }}/review/next?strategy=oldest">Next oldest</a>
         <a class="button-link" href="/ui/collections/{{ collection.collection_id }}/review/next?strategy=random">Random</a>
       </div>
@@ -46,23 +73,60 @@
 {% endblock %}
 {% block scripts %}
 <script>
-const verifyForm = document.querySelector("#verify-form");
+const decisionForm = document.querySelector("#decision-form");
 const verifyStatus = document.querySelector("#verify-status");
-verifyForm.addEventListener("submit", async (event) => {
+const decisionKind = document.querySelector("#decision-kind");
+const finalScryfallId = document.querySelector("#final-scryfall-id");
+const finish = document.querySelector("#finish");
+const cardSearch = document.querySelector("#card-search");
+const cardSearchResults = document.querySelector("#card-search-results");
+
+decisionKind.addEventListener("change", () => {
+  const unreadable = decisionKind.value === "unreadable";
+  finalScryfallId.required = !unreadable;
+  finish.required = !unreadable;
+});
+
+cardSearch.addEventListener("input", async () => {
+  const query = cardSearch.value.trim();
+  if (query.length < 2) {
+    cardSearchResults.replaceChildren();
+    return;
+  }
+  const response = await fetch(`/cards/search?q=${encodeURIComponent(query)}`);
+  if (!response.ok) return;
+  const cards = await response.json();
+  cardSearchResults.replaceChildren(...cards.map((card) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "search-result";
+    button.textContent = `${card.name} · ${card.set_code.toUpperCase()} ${card.collector_number}`;
+    button.addEventListener("click", () => {
+      finalScryfallId.value = card.scryfall_id;
+      cardSearchResults.replaceChildren();
+    });
+    return button;
+  }));
+});
+
+decisionForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const response = await fetch("/unverified-cards/{{ card.unverified_card_id }}/verify", {
+  const unreadable = decisionKind.value === "unreadable";
+  const response = await fetch("/unverified-cards/{{ card.unverified_card_id }}/decision", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({
-      final_scryfall_id: document.querySelector("#final-scryfall-id").value,
-      finish: document.querySelector("#finish").value,
+      decision_kind: decisionKind.value,
+      final_scryfall_id: unreadable ? null : finalScryfallId.value,
+      finish: unreadable ? null : finish.value,
+      notes: document.querySelector("#notes").value || null,
     }),
   });
   if (response.ok) {
-    verifyStatus.textContent = "Card verified.";
-    verifyForm.querySelector("button[type=submit]").disabled = true;
+    verifyStatus.textContent = unreadable ? "Review recorded." : "Card verified.";
+    decisionForm.querySelector("button[type=submit]").disabled = true;
   } else {
-    verifyStatus.textContent = `Verification failed (${response.status}).`;
+    verifyStatus.textContent = `Review failed (${response.status}).`;
   }
 });
 </script>
