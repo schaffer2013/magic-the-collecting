@@ -95,7 +95,8 @@ Goal: improve reliability, observability, and operator confidence.
 - [ ] Decide whether review selection needs reservation/locking semantics.
 - [x] Decide repeated-verification behavior for already verified evidence.
 - [ ] Add structured logs and metrics for intake, processing, review, retries,
-  queue depth, and image cleanup.
+  queue depth, and image cleanup. Core intake/processing/verification/transfer
+  logs are in place; broader metrics remain.
 - [ ] Add backup/export guidance for the production database and raw-image store.
 - [x] Add upload constraints and validation for supported image formats/sizes.
 
