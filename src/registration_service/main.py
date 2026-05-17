@@ -7,7 +7,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import exists, func, select
@@ -47,6 +48,29 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Magic: The Collecting", version="0.2.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(PACKAGE_DIR / "static")), name="static")
+
+
+def error_payload(status_code: int, detail) -> dict:
+    if isinstance(detail, dict):
+        message = detail.get("message", "request failed")
+        details = {key: value for key, value in detail.items() if key != "message"} or None
+    else:
+        message = str(detail)
+        details = None
+    return {"error": {"code": f"http_{status_code}", "message": message, "details": details}}
+
+
+@app.exception_handler(HTTPException)
+def handle_http_exception(_: Request, exc: HTTPException) -> JSONResponse:
+    return JSONResponse(status_code=exc.status_code, content=error_payload(exc.status_code, exc.detail))
+
+
+@app.exception_handler(RequestValidationError)
+def handle_validation_exception(_: Request, exc: RequestValidationError) -> JSONResponse:
+    return JSONResponse(
+        status_code=422,
+        content=error_payload(422, {"message": "request validation failed", "issues": exc.errors()}),
+    )
 
 
 def unverified_read(card: UnverifiedCard) -> UnverifiedCardRead:

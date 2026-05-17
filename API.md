@@ -40,6 +40,20 @@ changing their identity.
 - All IDs exposed by the API are GUID strings unless noted otherwise.
 - Timestamps are UTC ISO 8601 strings.
 - List endpoints return JSON arrays unless documented otherwise.
+- JSON errors use a shared envelope:
+
+```json
+{
+  "error": {
+    "code": "http_404",
+    "message": "collection not found",
+    "details": null
+  }
+}
+```
+
+  `details` is `null` when no extra machine-readable context exists. Validation
+  failures use `http_422` with an `issues` array inside `details`.
 - Raw images are service-owned after intake.
 - Verified raw images are not deleted immediately. They become eligible for
   garbage collection only after they are at least 24 hours old.
@@ -284,13 +298,18 @@ Returns an array of updated collection-card objects.
 
 ```json
 {
-  "detail": "batch transfer could not be completed",
-  "failures": [
-    {
-      "collection_card_id": "b9a2355d-43c4-4f68-a4a7-e0bd45858a15",
-      "reason": "collection card not found"
+  "error": {
+    "code": "http_409",
+    "message": "batch transfer could not be completed",
+    "details": {
+      "failures": [
+        {
+          "collection_card_id": "b9a2355d-43c4-4f68-a4a7-e0bd45858a15",
+          "reason": "collection card not found"
+        }
+      ]
     }
-  ]
+  }
 }
 ```
 
@@ -653,5 +672,4 @@ The following decisions are not yet specified tightly enough to guarantee a
 stable implementation contract:
 
 1. Authentication scheme and credential roles.
-2. Exact error payload shape shared across the API.
-3. Whether review-card selection should reserve a card for a reviewer.
+2. Whether review-card selection should reserve a card for a reviewer.

@@ -90,7 +90,7 @@ verification.
 Goal: improve reliability, observability, and operator confidence.
 
 - [ ] Add authentication and authorization for sorter clients and human users.
-- [ ] Define and implement a consistent API error envelope.
+- [x] Define and implement a consistent API error envelope.
 - [x] Add pagination to large list endpoints.
 - [ ] Decide whether review selection needs reservation/locking semantics.
 - [x] Decide repeated-verification behavior for already verified evidence.
