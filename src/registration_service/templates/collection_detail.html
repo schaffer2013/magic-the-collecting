@@ -44,11 +44,25 @@
   </div>
 </form>
 <div class="table-wrap">
+{% if transfer_targets %}
+<form id="batch-transfer-form" class="inline-actions">
+  <label>
+    Move selected to
+    <select name="target_collection_id">
+      {% for target in transfer_targets %}
+      <option value="{{ target.collection_id }}">{{ target.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button type="submit">Move selected</button>
+</form>
+{% endif %}
 <table>
-  <thead><tr><th>Name</th><th>Set</th><th>No.</th><th>Finish</th><th>Transfer</th></tr></thead>
+  <thead><tr><th>Select</th><th>Name</th><th>Set</th><th>No.</th><th>Finish</th><th>Transfer</th></tr></thead>
   <tbody>
   {% for card in cards %}
     <tr>
+      <td><input type="checkbox" class="card-select" value="{{ card.collection_card_id }}" aria-label="Select {{ card.name }}"></td>
       <td>{{ card.name }}</td>
       <td>{{ card.set_code }}</td>
       <td>{{ card.collector_number }}</td>
@@ -77,6 +91,7 @@
 {% block scripts %}
 <script>
 const transferStatus = document.querySelector("#transfer-status");
+const batchTransferForm = document.querySelector("#batch-transfer-form");
 document.querySelectorAll(".transfer-form").forEach((form) => {
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -95,5 +110,29 @@ document.querySelectorAll(".transfer-form").forEach((form) => {
     }
   });
 });
+if (batchTransferForm) {
+  batchTransferForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const selected = [...document.querySelectorAll(".card-select:checked")];
+    if (selected.length === 0) {
+      transferStatus.textContent = "Select at least one card.";
+      return;
+    }
+    const response = await fetch("/collection-cards/transfer", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        collection_card_ids: selected.map((item) => item.value),
+        target_collection_id: batchTransferForm.elements.target_collection_id.value,
+      }),
+    });
+    if (response.ok) {
+      transferStatus.textContent = "Selected cards moved.";
+      selected.forEach((item) => item.closest("tr").remove());
+    } else {
+      transferStatus.textContent = `Batch transfer failed (${response.status}).`;
+    }
+  });
+}
 </script>
 {% endblock %}

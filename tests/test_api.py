@@ -279,6 +279,7 @@ def test_collection_detail_ui_exposes_exports_and_transfer_controls(client):
     assert "Export trusted CSV" in page.text
     assert "Export unverified CSV" in page.text
     assert "transfer-form" in page.text
+    assert "batch-transfer-form" in page.text
     assert 'name="collector_number"' in page.text
 
 
