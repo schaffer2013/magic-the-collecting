@@ -81,7 +81,8 @@ verification.
   - right card, wrong printing
   - wrong card
   - unreadable / insufficient evidence
-- [ ] Add collection-scoped review navigation for oldest/newest/random behavior.
+- [ ] Add browser UI controls for the already-supported collection-scoped
+  oldest/newest/random review navigation.
 - [ ] Schedule duplicate-hash cleanup and verified-image cleanup jobs.
 
 ## Tier 2 — Make it dependable for real collection work
