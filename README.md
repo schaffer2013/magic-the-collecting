@@ -29,7 +29,7 @@ cp .env.test.example .env.test
 Start the prod-like stack:
 
 ```bash
-docker compose --env-file .env.prod up --build
+./entrypoints/start-local.ps1 -Build
 ```
 
 Seed a default collection in a running local environment:
@@ -78,6 +78,13 @@ The integrated UI includes:
 - human-review pages
 
 The same pages use responsive layouts for desktop and mobile widths.
+
+## Entrypoints
+
+Convenience scripts live in `entrypoints/`.
+
+- `start-local.ps1` starts the local production-like stack and prints the UI and
+  API URLs in the terminal.
 
 ## Background processing
 

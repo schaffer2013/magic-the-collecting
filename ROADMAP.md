@@ -40,6 +40,7 @@ Implemented:
   `machine_recognized`
 - responsive UI pages for collections, collection detail, queue, and review
 - automated tests using isolated temporary test storage
+- root-level entrypoint script for starting the local production-like stack
 
 Known intentional gaps:
 
