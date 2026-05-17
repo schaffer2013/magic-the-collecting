@@ -124,6 +124,11 @@ Lists all collections.
 
 | Parameter | Type | Required | Meaning |
 |---|---|---:|---|
+| `q` | string | no | Case-insensitive substring match against canonical card name. |
+| `set_code` | string | no | Exact set-code filter. |
+| `collector_number` | string | no | Exact collector-number filter. |
+| `finish` | enum | no | Exact finish filter: `nonfoil`, `foil`, `etched`, or `glossy`. |
+| `scryfall_id` | string | no | Exact Scryfall printing ID filter. |
 | `limit` | integer | no | Maximum rows to return. Default `100`, maximum `500`. |
 | `offset` | integer | no | Number of matching rows to skip before returning results. Default `0`. |
 

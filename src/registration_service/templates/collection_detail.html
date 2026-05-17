@@ -2,20 +2,137 @@
 {% block title %}{{ collection.name }}{% endblock %}
 {% block content %}
 <h1>{{ collection.name }}</h1>
-<nav><a href="/ui/collections/{{ collection.collection_id }}/queue">Recognition queue</a></nav>
+<nav class="actions">
+  <a class="button-link" href="/ui/collections/{{ collection.collection_id }}/queue">Recognition queue</a>
+  <a class="button-link" href="/collections/{{ collection.collection_id }}/export.csv">Export trusted CSV</a>
+  <a class="button-link" href="/collections/{{ collection.collection_id }}/unverified-cards/export.csv">Export unverified CSV</a>
+</nav>
 <section class="stats">
   <span>{{ summary.trusted_collection_card_count }} trusted</span>
   <span>{{ summary.unprocessed_count }} unprocessed</span>
   <span>{{ summary.machine_recognized_count }} ready</span>
 </section>
+<form class="filter-grid" method="get">
+  <label>
+    Name
+    <input name="q" value="{{ filters.q }}">
+  </label>
+  <label>
+    Set
+    <input name="set_code" value="{{ filters.set_code }}">
+  </label>
+  <label>
+    Collector no.
+    <input name="collector_number" value="{{ filters.collector_number }}">
+  </label>
+  <label>
+    Finish
+    <select name="finish">
+      <option value="">Any</option>
+      {% for option in ["nonfoil", "foil", "etched", "glossy"] %}
+      <option value="{{ option }}" {% if filters.finish == option %}selected{% endif %}>{{ option }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>
+    Scryfall ID
+    <input name="scryfall_id" value="{{ filters.scryfall_id }}">
+  </label>
+  <div class="actions">
+    <button type="submit">Filter</button>
+    <a class="button-link" href="/ui/collections/{{ collection.collection_id }}">Clear</a>
+  </div>
+</form>
 <div class="table-wrap">
+{% if transfer_targets %}
+<form id="batch-transfer-form" class="inline-actions">
+  <label>
+    Move selected to
+    <select name="target_collection_id">
+      {% for target in transfer_targets %}
+      <option value="{{ target.collection_id }}">{{ target.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button type="submit">Move selected</button>
+</form>
+{% endif %}
 <table>
-  <thead><tr><th>Name</th><th>Set</th><th>No.</th><th>Finish</th></tr></thead>
+  <thead><tr><th>Select</th><th>Name</th><th>Set</th><th>No.</th><th>Finish</th><th>Transfer</th></tr></thead>
   <tbody>
   {% for card in cards %}
-    <tr><td>{{ card.name }}</td><td>{{ card.set_code }}</td><td>{{ card.collector_number }}</td><td>{{ card.finish.value }}</td></tr>
+    <tr>
+      <td><input type="checkbox" class="card-select" value="{{ card.collection_card_id }}" aria-label="Select {{ card.name }}"></td>
+      <td>{{ card.name }}</td>
+      <td>{{ card.set_code }}</td>
+      <td>{{ card.collector_number }}</td>
+      <td>{{ card.finish.value }}</td>
+      <td>
+        {% if transfer_targets %}
+        <form class="transfer-form inline-actions" data-card-id="{{ card.collection_card_id }}">
+          <select name="target_collection_id" aria-label="Transfer target for {{ card.name }}">
+            {% for target in transfer_targets %}
+            <option value="{{ target.collection_id }}">{{ target.name }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit">Move</button>
+        </form>
+        {% else %}
+        <span>No other collection</span>
+        {% endif %}
+      </td>
+    </tr>
   {% endfor %}
   </tbody>
 </table>
 </div>
+<p id="transfer-status" role="status"></p>
+{% endblock %}
+{% block scripts %}
+<script>
+const transferStatus = document.querySelector("#transfer-status");
+const batchTransferForm = document.querySelector("#batch-transfer-form");
+document.querySelectorAll(".transfer-form").forEach((form) => {
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const cardId = form.dataset.cardId;
+    const targetCollectionId = form.elements.target_collection_id.value;
+    const response = await fetch(`/collection-cards/${cardId}/transfer`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({target_collection_id: targetCollectionId}),
+    });
+    if (response.ok) {
+      transferStatus.textContent = "Card moved.";
+      form.closest("tr").remove();
+    } else {
+      transferStatus.textContent = `Transfer failed (${response.status}).`;
+    }
+  });
+});
+if (batchTransferForm) {
+  batchTransferForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const selected = [...document.querySelectorAll(".card-select:checked")];
+    if (selected.length === 0) {
+      transferStatus.textContent = "Select at least one card.";
+      return;
+    }
+    const response = await fetch("/collection-cards/transfer", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        collection_card_ids: selected.map((item) => item.value),
+        target_collection_id: batchTransferForm.elements.target_collection_id.value,
+      }),
+    });
+    if (response.ok) {
+      transferStatus.textContent = "Selected cards moved.";
+      selected.forEach((item) => item.closest("tr").remove());
+    } else {
+      transferStatus.textContent = `Batch transfer failed (${response.status}).`;
+    }
+  });
+}
+</script>
 {% endblock %}
