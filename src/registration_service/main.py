@@ -383,6 +383,16 @@ def ui_queue(collection_id: str, request: Request, db: Session = Depends(get_db)
     return templates.TemplateResponse(request, "queue.html", {"collection": collection, "cards": cards})
 
 
+@app.get("/ui/collections/{collection_id}/review/next")
+def ui_next_review(
+    collection_id: str,
+    strategy: str = Query("oldest", pattern="^(oldest|newest|random)$"),
+    db: Session = Depends(get_db),
+):
+    card = get_next_review_card(collection_id, strategy, db)
+    return RedirectResponse(url=f"/ui/unverified-cards/{card.unverified_card_id}/review", status_code=303)
+
+
 @app.get("/ui/register", response_class=HTMLResponse)
 def ui_register(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(request, "register.html", {"collections": list_collections(db)})
@@ -393,4 +403,8 @@ def ui_review(unverified_card_id: str, request: Request, db: Session = Depends(g
     card = db.get(UnverifiedCard, unverified_card_id)
     if card is None:
         raise HTTPException(status_code=404, detail="unverified card not found")
-    return templates.TemplateResponse(request, "review.html", {"card": unverified_read(card)})
+    return templates.TemplateResponse(
+        request,
+        "review.html",
+        {"card": unverified_read(card), "collection": card.collection},
+    )

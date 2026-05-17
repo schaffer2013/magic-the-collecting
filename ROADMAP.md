@@ -74,16 +74,16 @@ verification.
   lookup for verified printing IDs.
 - [ ] Integrate fuzzy-enigma max-accuracy recognition into the worker path.
 - [ ] Persist ordered machine candidates, confidence, and debug evidence.
-- [ ] Add browser-side human verification submission from the review UI.
+- [x] Add browser-side human verification submission from the review UI.
 - [ ] Show canonical reference image beside the raw uploaded card image.
 - [ ] Add review decisions for:
   - exactly correct
   - right card, wrong printing
   - wrong card
   - unreadable / insufficient evidence
-- [ ] Add browser UI controls for the already-supported collection-scoped
+- [x] Add browser UI controls for the already-supported collection-scoped
   oldest/newest/random review navigation.
-- [ ] Schedule duplicate-hash cleanup and verified-image cleanup jobs.
+- [x] Schedule duplicate-hash cleanup and verified-image cleanup jobs.
 
 ## Tier 2 — Make it dependable for real collection work
 

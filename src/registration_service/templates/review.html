@@ -3,11 +3,65 @@
 {% block content %}
 <h1>Human validation</h1>
 <div class="review-layout">
-  <img class="review-image" src="{{ card.raw_image_url }}" alt="Captured card">
+  <div>
+    <h2>Original</h2>
+    <img class="review-image" src="{{ card.raw_image_url }}" alt="Captured card">
+  </div>
+  <div>
+    <h2>Recognition input</h2>
+    <img class="review-image" src="{{ card.recognition_image_url }}" alt="Recognition input">
+    {% if card.overlay_image_url %}
+    <p><a href="{{ card.overlay_image_url }}">View bounding-box overlay</a></p>
+    {% endif %}
+  </div>
   <section>
+    <p><a href="/ui/collections/{{ collection.collection_id }}/queue">Back to {{ collection.name }} queue</a></p>
     <p><strong>Expected:</strong> {{ card.expected_scryfall_id or "None" }}</p>
     <p><strong>Candidates:</strong> {{ card.machine_candidate_scryfall_ids | join(", ") or "None" }}</p>
-    <p>Submit verification through the API endpoint for now.</p>
+    <form id="verify-form" class="stack">
+      <label>
+        Final Scryfall ID
+        <input id="final-scryfall-id" required value="{{ card.expected_scryfall_id or '' }}">
+      </label>
+      <label>
+        Finish
+        <select id="finish" required>
+          <option value="nonfoil">Nonfoil</option>
+          <option value="foil">Foil</option>
+          <option value="etched">Etched</option>
+          <option value="glossy">Glossy</option>
+        </select>
+      </label>
+      <div class="actions">
+        <button type="submit">Human verify</button>
+        <a class="button-link" href="/ui/collections/{{ collection.collection_id }}/review/next?strategy=oldest">Next oldest</a>
+        <a class="button-link" href="/ui/collections/{{ collection.collection_id }}/review/next?strategy=random">Random</a>
+      </div>
+      <p id="verify-status" role="status"></p>
+    </form>
   </section>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+const verifyForm = document.querySelector("#verify-form");
+const verifyStatus = document.querySelector("#verify-status");
+verifyForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const response = await fetch("/unverified-cards/{{ card.unverified_card_id }}/verify", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      final_scryfall_id: document.querySelector("#final-scryfall-id").value,
+      finish: document.querySelector("#finish").value,
+    }),
+  });
+  if (response.ok) {
+    verifyStatus.textContent = "Card verified.";
+    verifyForm.querySelector("button[type=submit]").disabled = true;
+  } else {
+    verifyStatus.textContent = `Verification failed (${response.status}).`;
+  }
+});
+</script>
 {% endblock %}

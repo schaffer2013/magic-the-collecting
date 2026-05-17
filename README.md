@@ -80,6 +80,8 @@ The integrated UI includes:
 - human-review pages
 - manual image registration with upload/camera capture and optional draggable
   four-point bounding boxes
+- review actions for oldest/newest/random queue navigation and browser-side
+  human verification
 
 The same pages use responsive layouts for desktop and mobile widths.
 

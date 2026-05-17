@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from registration_service.maintenance import cleanup_verified_raw_images
 from registration_service.models import CardState, CollectionCard, Finish, UnverifiedCard, ValidationSource, utcnow
 from registration_service.config import settings
 from registration_service.services import process_next_unprocessed_card
@@ -163,3 +164,39 @@ def test_exports_and_ui_smoke(client):
     assert api.get("/ui/register").status_code == 200
     assert api.get(f"/ui/collections/{collection['collection_id']}").status_code == 200
     assert api.get(f"/ui/collections/{collection['collection_id']}/queue").status_code == 200
+
+
+def test_review_ui_next_redirect_and_page(client):
+    api, Session = client
+    collection = create_collection(api)
+    intake(api, collection["collection_id"], image=b"review-ui")
+    with Session() as db:
+        process_next_unprocessed_card(db)
+    response = api.get(
+        f"/ui/collections/{collection['collection_id']}/review/next",
+        params={"strategy": "oldest"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    page = api.get(response.headers["location"])
+    assert page.status_code == 200
+    assert "Human verify" in page.text
+
+
+def test_verified_image_cleanup_respects_age(client):
+    api, Session = client
+    collection = create_collection(api)
+    card_payload = intake(api, collection["collection_id"], image=b"cleanup-image").json()
+    from datetime import timedelta
+    from pathlib import Path
+
+    with Session() as db:
+        card = db.get(UnverifiedCard, card_payload["unverified_card_id"])
+        card.card_state = CardState.human_verified
+        card.verified_at = utcnow() - timedelta(hours=25)
+        db.commit()
+        path = Path(card.raw_image_uri)
+        assert path.exists()
+        deleted = cleanup_verified_raw_images(db)
+    assert deleted == 1
+    assert not path.exists()
