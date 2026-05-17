@@ -233,8 +233,20 @@ def test_transfers_are_atomic_and_report_all_failures(client):
         json={"collection_card_ids": [card_id, "missing"], "target_collection_id": target["collection_id"]},
     )
     assert failed.status_code == 409
-    assert failed.json()["detail"]["failures"][0]["collection_card_id"] == "missing"
+    assert failed.json()["error"]["details"]["failures"][0]["collection_card_id"] == "missing"
     assert api.get(f"/collections/{source['collection_id']}/cards").json()[0]["collection_card_id"] == card_id
+
+
+def test_errors_use_consistent_envelope(client):
+    api, _ = client
+    response = api.get("/collections/missing/summary")
+    assert response.status_code == 404
+    assert response.json() == {
+        "error": {"code": "http_404", "message": "collection not found", "details": None}
+    }
+    validation = api.post("/collections", json={})
+    assert validation.status_code == 422
+    assert validation.json()["error"]["message"] == "request validation failed"
 
 
 def test_exports_and_ui_smoke(client):
