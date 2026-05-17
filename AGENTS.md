@@ -16,5 +16,24 @@ before considering the work complete.
   printing. Do not model collection cards as unique by printing ID.
 - The service should support multiple collections even if the first deployment
   only uses one.
-- A submitted card should enter its target collection immediately as an
-  unverified collection-card record, then transition to verified later.
+- Keep unverified intake records separate from trusted collection-card records.
+  A submitted card creates an unverified card associated with a target
+  collection; only human verification creates a collection card.
+
+## Git workflow
+
+- Treat `main` as a stable integration branch, not the normal place to do work.
+- Before making non-trivial edits, create or switch to a descriptive working
+  branch.
+- Do not leave modified code sitting on `main`. If meaningful code or contract
+  work is needed, branch first.
+- Direct commits to `main` should be rare and limited to truly trivial changes,
+  such as a tiny typo fix or a single-value correction.
+- Prefer small, understandable commits that each represent one coherent idea.
+  A reviewer should be able to understand the purpose of a commit from both its
+  message and its size.
+- Use branches to group related work, then merge completed work back into
+  `main` intentionally after validation.
+- Before merging, run the relevant checks and make sure the branch history is
+  understandable enough that future maintainers can follow what changed and
+  why.

@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .models import JobStatus, ValidationSource, VerificationState
+from .models import CardState, JobStatus, ValidationSource
 
 
 class CollectionCreate(BaseModel):
@@ -56,14 +56,45 @@ class CollectionCardRead(BaseModel):
 
     collection_card_id: int
     collection_id: int
+    source_unverified_card_id: int | None
     job_id: int | None
-    verification_state: VerificationState
-    raw_image_uri: str | None
-    scryfall_id: str | None
-    name: str | None
-    set_code: str | None
-    collector_number: str | None
+    scryfall_id: str
+    name: str
+    set_code: str
+    collector_number: str
     foil: bool | None
     language: str | None
-    validation_source: ValidationSource | None
-    validated_at: datetime | None
+    validation_source: ValidationSource
+    validated_at: datetime
+
+
+class UnverifiedCardRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    unverified_card_id: int
+    collection_id: int
+    job_id: int | None
+    card_state: CardState
+    raw_image_uri: str | None
+    expected_scryfall_id: str | None
+    machine_candidate_scryfall_ids: str | None
+    created_at: datetime
+
+
+class ReviewCardRead(BaseModel):
+    unverified_card_id: int
+    collection_id: int
+    job_id: int | None
+    card_state: CardState
+    raw_image_url: str
+    expected_scryfall_id: str | None
+    machine_candidate_scryfall_ids: list[str]
+
+
+class HumanVerificationCreate(BaseModel):
+    final_scryfall_id: str
+    name: str
+    set_code: str
+    collector_number: str
+    foil: bool | None = None
+    language: str | None = None

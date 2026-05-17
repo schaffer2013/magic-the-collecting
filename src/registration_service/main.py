@@ -2,24 +2,29 @@ from __future__ import annotations
 
 import csv
 import io
+import json
+import random
 from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Response, UploadFile, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .database import get_db, init_db
-from .models import Collection, CollectionCard, RegistrationJob, VerificationState
+from .models import CardState, Collection, CollectionCard, RegistrationJob, UnverifiedCard, ValidationSource
 from .schemas import (
     CollectionCardRead,
     CollectionCreate,
     CollectionRead,
+    HumanVerificationCreate,
     RegistrationJobCreate,
     RegistrationJobRead,
+    ReviewCardRead,
+    UnverifiedCardRead,
 )
 
 RAW_IMAGE_DIR = Path("data/raw-images")
@@ -104,10 +109,11 @@ async def create_registration_job(
     db.add(job)
     db.flush()
     db.add(
-        CollectionCard(
+        UnverifiedCard(
             collection_id=collection_id,
             job_id=job.job_id,
             raw_image_uri=str(raw_image_path),
+            expected_scryfall_id=sorter_expected_scryfall_id,
         )
     )
     db.commit()
@@ -126,15 +132,105 @@ def get_registration_job(job_id: int, db: Session = Depends(get_db)) -> Registra
 @app.get("/collections/{collection_id}/cards", response_model=list[CollectionCardRead])
 def list_collection_cards(
     collection_id: int,
-    verification_state: VerificationState | None = Query(None),
     db: Session = Depends(get_db),
 ) -> list[CollectionCard]:
     if db.get(Collection, collection_id) is None:
         raise HTTPException(status_code=404, detail="collection not found")
     query = select(CollectionCard).where(CollectionCard.collection_id == collection_id)
-    if verification_state is not None:
-        query = query.where(CollectionCard.verification_state == verification_state)
     return list(db.scalars(query.order_by(CollectionCard.collection_card_id)))
+
+
+@app.get("/collections/{collection_id}/unverified-cards", response_model=list[UnverifiedCardRead])
+def list_unverified_cards(
+    collection_id: int,
+    card_state: CardState | None = Query(None),
+    db: Session = Depends(get_db),
+) -> list[UnverifiedCard]:
+    if db.get(Collection, collection_id) is None:
+        raise HTTPException(status_code=404, detail="collection not found")
+    query = select(UnverifiedCard).where(UnverifiedCard.collection_id == collection_id)
+    if card_state is not None:
+        query = query.where(UnverifiedCard.card_state == card_state)
+    return list(db.scalars(query.order_by(UnverifiedCard.unverified_card_id)))
+
+
+@app.get("/review-cards/next", response_model=ReviewCardRead)
+def get_next_review_card(
+    strategy: str = Query("oldest", pattern="^(oldest|newest|random)$"),
+    db: Session = Depends(get_db),
+) -> ReviewCardRead:
+    cards = list(
+        db.scalars(
+            select(UnverifiedCard).where(UnverifiedCard.card_state != CardState.human_verified)
+        )
+    )
+    if not cards:
+        raise HTTPException(status_code=404, detail="no cards awaiting human verification")
+
+    if strategy == "oldest":
+        card = min(cards, key=lambda item: item.unverified_card_id)
+    elif strategy == "newest":
+        card = max(cards, key=lambda item: item.unverified_card_id)
+    else:
+        card = random.choice(cards)
+
+    candidate_ids = json.loads(card.machine_candidate_scryfall_ids or "[]")
+    return ReviewCardRead(
+        unverified_card_id=card.unverified_card_id,
+        collection_id=card.collection_id,
+        job_id=card.job_id,
+        card_state=card.card_state,
+        raw_image_url=f"/unverified-cards/{card.unverified_card_id}/raw-image",
+        expected_scryfall_id=card.expected_scryfall_id,
+        machine_candidate_scryfall_ids=candidate_ids,
+    )
+
+
+@app.get("/unverified-cards/{unverified_card_id}/raw-image")
+def get_unverified_card_raw_image(unverified_card_id: int, db: Session = Depends(get_db)) -> FileResponse:
+    card = db.get(UnverifiedCard, unverified_card_id)
+    if card is None or card.raw_image_uri is None:
+        raise HTTPException(status_code=404, detail="raw image not found")
+    image_path = Path(card.raw_image_uri)
+    if not image_path.exists():
+        raise HTTPException(status_code=404, detail="raw image not found")
+    return FileResponse(image_path)
+
+
+@app.post("/unverified-cards/{unverified_card_id}/verify", response_model=CollectionCardRead)
+def human_verify_unverified_card(
+    unverified_card_id: int,
+    payload: HumanVerificationCreate,
+    db: Session = Depends(get_db),
+) -> CollectionCard:
+    unverified_card = db.get(UnverifiedCard, unverified_card_id)
+    if unverified_card is None:
+        raise HTTPException(status_code=404, detail="unverified card not found")
+
+    from .models import utcnow
+
+    unverified_card.card_state = CardState.human_verified
+    card = CollectionCard(
+        collection_id=unverified_card.collection_id,
+        source_unverified_card_id=unverified_card.unverified_card_id,
+        job_id=unverified_card.job_id,
+        scryfall_id=payload.final_scryfall_id,
+        name=payload.name,
+        set_code=payload.set_code,
+        collector_number=payload.collector_number,
+        foil=payload.foil,
+        language=payload.language,
+        validation_source=ValidationSource.human,
+        validated_at=utcnow(),
+    )
+    db.add(card)
+    if unverified_card.job is not None:
+        from .models import JobStatus
+
+        unverified_card.job.status = JobStatus.human_validated
+    db.commit()
+    db.refresh(card)
+    return card
 
 
 @app.get("/collections/{collection_id}/export.csv")
@@ -158,8 +254,7 @@ def export_collection_csv(collection_id: int, db: Session = Depends(get_db)) -> 
             "collection_card_id",
             "collection_id",
             "job_id",
-            "verification_state",
-            "raw_image_uri",
+            "source_unverified_card_id",
             "scryfall_id",
             "name",
             "set_code",
@@ -176,16 +271,15 @@ def export_collection_csv(collection_id: int, db: Session = Depends(get_db)) -> 
                 card.collection_card_id,
                 card.collection_id,
                 card.job_id or "",
-                card.verification_state.value,
-                card.raw_image_uri or "",
-                card.scryfall_id or "",
-                card.name or "",
-                card.set_code or "",
-                card.collector_number or "",
+                card.source_unverified_card_id or "",
+                card.scryfall_id,
+                card.name,
+                card.set_code,
+                card.collector_number,
                 "" if card.foil is None else card.foil,
                 card.language or "",
-                card.validation_source.value if card.validation_source else "",
-                card.validated_at.isoformat() if card.validated_at else "",
+                card.validation_source.value,
+                card.validated_at.isoformat(),
             ]
         )
 
