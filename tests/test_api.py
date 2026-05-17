@@ -221,6 +221,30 @@ def test_exports_and_ui_smoke(client):
     assert api.get(f"/ui/collections/{collection['collection_id']}/queue").status_code == 200
 
 
+def test_collection_detail_ui_exposes_exports_and_transfer_controls(client):
+    api, Session = client
+    source = create_collection(api, "Source")
+    create_collection(api, "Trade")
+    with Session() as db:
+        card = CollectionCard(
+            collection_id=source["collection_id"],
+            scryfall_id="id",
+            name="Name",
+            set_code="set",
+            collector_number="1",
+            finish=Finish.nonfoil,
+            validation_source=ValidationSource.human,
+            validated_at=utcnow(),
+        )
+        db.add(card)
+        db.commit()
+    page = api.get(f"/ui/collections/{source['collection_id']}")
+    assert page.status_code == 200
+    assert "Export trusted CSV" in page.text
+    assert "Export unverified CSV" in page.text
+    assert "transfer-form" in page.text
+
+
 def test_review_ui_next_redirect_and_page(client):
     api, Session = client
     collection = create_collection(api)

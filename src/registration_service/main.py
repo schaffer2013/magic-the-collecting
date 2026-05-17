@@ -452,6 +452,9 @@ def ui_collection_detail(collection_id: str, request: Request, db: Session = Dep
             "collection": collection,
             "summary": summary_for_collection(db, collection_id),
             "cards": list_collection_cards(collection_id, 500, 0, db),
+            "transfer_targets": [
+                item for item in list_collections(500, 0, db) if item.collection_id != collection_id
+            ],
         },
     )
 

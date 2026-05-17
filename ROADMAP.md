@@ -103,8 +103,8 @@ Goal: improve reliability, observability, and operator confidence.
 
 Goal: make the service pleasant beyond the minimum registration workflow.
 
-- [ ] Add UI controls for transferring trusted cards between collections.
-- [ ] Add UI controls for trusted and unverified CSV export.
+- [x] Add UI controls for transferring trusted cards between collections.
+- [x] Add UI controls for trusted and unverified CSV export.
 - [ ] Add collection search/filtering by name, set, collector number, finish, and
   Scryfall ID.
 - [ ] Add bulk card-selection patterns in the collection UI.
