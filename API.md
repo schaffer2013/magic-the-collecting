@@ -120,6 +120,13 @@ Creates a new collection.
 
 Lists all collections.
 
+#### Query parameters
+
+| Parameter | Type | Required | Meaning |
+|---|---|---:|---|
+| `limit` | integer | no | Maximum rows to return. Default `100`, maximum `500`. |
+| `offset` | integer | no | Number of matching rows to skip before returning results. Default `0`. |
+
 #### Response `200 OK`
 
 Array of collection objects using the same fields returned by `POST /collections`.
@@ -165,6 +172,13 @@ Lists trusted collection-card instances currently belonging to one collection.
 | Parameter | Type | Meaning |
 |---|---|---|
 | `collection_id` | GUID | Collection to inspect. |
+
+#### Query parameters
+
+| Parameter | Type | Required | Meaning |
+|---|---|---:|---|
+| `limit` | integer | no | Maximum rows to return. Default `100`, maximum `500`. |
+| `offset` | integer | no | Number of matching rows to skip before returning results. Default `0`. |
 
 #### Response `200 OK`
 
@@ -333,6 +347,8 @@ card.
 - The service computes an image hash scoped to the target collection.
 - If the same exact image was recently submitted to the same collection and the
   hash is still retained, the request fails with `409 Conflict`.
+- Supported upload media types are `image/jpeg`, `image/png`, and `image/webp`.
+- Raw uploads larger than the configured maximum size are rejected.
 
 #### Response `201 Created`
 
@@ -374,6 +390,8 @@ card.
 |---|---|
 | `404 Not Found` | Target collection does not exist. |
 | `409 Conflict` | Duplicate image recently submitted to the same collection. |
+| `413 Payload Too Large` | Raw image exceeds the configured maximum upload size. |
+| `415 Unsupported Media Type` | Raw image media type is not supported. |
 
 ## 6. Unverified cards and review
 
@@ -386,6 +404,8 @@ Lists unverified-card evidence records associated with one collection.
 | Parameter | Type | Required | Meaning |
 |---|---|---:|---|
 | `card_state` | enum | no | Optional filter: `unprocessed`, `machine_recognized`, or `human_verified`. |
+| `limit` | integer | no | Maximum rows to return. Default `100`, maximum `500`. |
+| `offset` | integer | no | Number of matching rows to skip before returning results. Default `0`. |
 
 #### Response `200 OK`
 
@@ -623,5 +643,3 @@ stable implementation contract:
 3. Whether review-card selection should reserve a card for a reviewer.
 4. Whether a second verification attempt on the same unverified card is rejected
    or treated as an idempotent read of the existing collection card.
-5. Whether list endpoints need pagination in v1.
-6. Exact permitted raw-image formats and maximum upload size.

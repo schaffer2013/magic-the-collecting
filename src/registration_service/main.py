@@ -33,6 +33,7 @@ from .schemas import (
 )
 from .services import candidate_ids, create_unverified_card, raw_image_url, verify_unverified_card
 from .catalog import get_card_metadata, search_cards
+from .config import settings
 
 PACKAGE_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=str(PACKAGE_DIR / "templates"))
@@ -108,8 +109,12 @@ def create_collection(payload: CollectionCreate, db: Session = Depends(get_db)) 
 
 
 @app.get("/collections", response_model=list[CollectionRead])
-def list_collections(db: Session = Depends(get_db)) -> list[Collection]:
-    return list(db.scalars(select(Collection).order_by(Collection.created_at)))
+def list_collections(
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+) -> list[Collection]:
+    return list(db.scalars(select(Collection).order_by(Collection.created_at).limit(limit).offset(offset)))
 
 
 @app.get("/collections/{collection_id}/summary", response_model=CollectionSummaryRead)
@@ -134,6 +139,10 @@ async def intake_unverified_card(
     if db.get(Collection, collection_id) is None:
         raise HTTPException(status_code=404, detail="collection not found")
     image_bytes = await raw_image.read()
+    if raw_image.content_type not in {"image/jpeg", "image/png", "image/webp"}:
+        raise HTTPException(status_code=415, detail="unsupported image media type")
+    if len(image_bytes) > settings.max_upload_bytes:
+        raise HTTPException(status_code=413, detail="raw image exceeds maximum upload size")
     try:
         parsed_bounding_box = parse_bounding_box(bounding_box)
     except (ValueError, TypeError) as exc:
@@ -154,6 +163,8 @@ async def intake_unverified_card(
 def list_unverified_cards(
     collection_id: str,
     card_state: CardState | None = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ) -> list[UnverifiedCardRead]:
     if db.get(Collection, collection_id) is None:
@@ -161,7 +172,7 @@ def list_unverified_cards(
     query = select(UnverifiedCard).where(UnverifiedCard.collection_id == collection_id)
     if card_state is not None:
         query = query.where(UnverifiedCard.card_state == card_state)
-    cards = db.scalars(query.order_by(UnverifiedCard.inducted_at)).all()
+    cards = db.scalars(query.order_by(UnverifiedCard.inducted_at).limit(limit).offset(offset)).all()
     return [unverified_read(card) for card in cards]
 
 
@@ -270,7 +281,12 @@ def search_card_printings(q: str = Query(..., min_length=1)) -> list[CardSearchR
 
 
 @app.get("/collections/{collection_id}/cards", response_model=list[CollectionCardRead])
-def list_collection_cards(collection_id: str, db: Session = Depends(get_db)) -> list[CollectionCard]:
+def list_collection_cards(
+    collection_id: str,
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+) -> list[CollectionCard]:
     if db.get(Collection, collection_id) is None:
         raise HTTPException(status_code=404, detail="collection not found")
     return list(
@@ -278,6 +294,8 @@ def list_collection_cards(collection_id: str, db: Session = Depends(get_db)) -> 
             select(CollectionCard)
             .where(CollectionCard.collection_id == collection_id)
             .order_by(CollectionCard.validated_at)
+            .limit(limit)
+            .offset(offset)
         )
     )
 
@@ -328,7 +346,15 @@ def transfer_cards(payload: BatchTransferCreate, db: Session = Depends(get_db)) 
 
 @app.get("/collections/{collection_id}/export.csv")
 def export_cards(collection_id: str, db: Session = Depends(get_db)) -> StreamingResponse:
-    cards = list_collection_cards(collection_id, db)
+    if db.get(Collection, collection_id) is None:
+        raise HTTPException(status_code=404, detail="collection not found")
+    cards = list(
+        db.scalars(
+            select(CollectionCard)
+            .where(CollectionCard.collection_id == collection_id)
+            .order_by(CollectionCard.validated_at)
+        )
+    )
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow(
@@ -365,7 +391,16 @@ def export_cards(collection_id: str, db: Session = Depends(get_db)) -> Streaming
 
 @app.get("/collections/{collection_id}/unverified-cards/export.csv")
 def export_unverified_cards(collection_id: str, db: Session = Depends(get_db)) -> StreamingResponse:
-    cards = list_unverified_cards(collection_id, None, db)
+    if db.get(Collection, collection_id) is None:
+        raise HTTPException(status_code=404, detail="collection not found")
+    cards = [
+        unverified_read(card)
+        for card in db.scalars(
+            select(UnverifiedCard)
+            .where(UnverifiedCard.collection_id == collection_id)
+            .order_by(UnverifiedCard.inducted_at)
+        )
+    ]
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow(
@@ -396,7 +431,7 @@ def export_unverified_cards(collection_id: str, db: Session = Depends(get_db)) -
 
 @app.get("/", response_class=HTMLResponse)
 def ui_collections(request: Request, db: Session = Depends(get_db)):
-    collections = list_collections(db)
+    collections = list_collections(500, 0, db)
     summaries = {collection.collection_id: summary_for_collection(db, collection.collection_id) for collection in collections}
     return templates.TemplateResponse(
         request,
@@ -416,7 +451,7 @@ def ui_collection_detail(collection_id: str, request: Request, db: Session = Dep
         {
             "collection": collection,
             "summary": summary_for_collection(db, collection_id),
-            "cards": list_collection_cards(collection_id, db),
+            "cards": list_collection_cards(collection_id, 500, 0, db),
         },
     )
 
@@ -426,7 +461,7 @@ def ui_queue(collection_id: str, request: Request, db: Session = Depends(get_db)
     collection = db.get(Collection, collection_id)
     if collection is None:
         raise HTTPException(status_code=404, detail="collection not found")
-    cards = list_unverified_cards(collection_id, CardState.machine_recognized, db)
+    cards = list_unverified_cards(collection_id, CardState.machine_recognized, 500, 0, db)
     return templates.TemplateResponse(request, "queue.html", {"collection": collection, "cards": cards})
 
 
@@ -442,7 +477,7 @@ def ui_next_review(
 
 @app.get("/ui/register", response_class=HTMLResponse)
 def ui_register(request: Request, db: Session = Depends(get_db)):
-    return templates.TemplateResponse(request, "register.html", {"collections": list_collections(db)})
+    return templates.TemplateResponse(request, "register.html", {"collections": list_collections(500, 0, db)})
 
 
 @app.get("/ui/unverified-cards/{unverified_card_id}/review", response_class=HTMLResponse)
