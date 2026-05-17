@@ -93,7 +93,7 @@ Goal: improve reliability, observability, and operator confidence.
 - [ ] Define and implement a consistent API error envelope.
 - [x] Add pagination to large list endpoints.
 - [ ] Decide whether review selection needs reservation/locking semantics.
-- [ ] Decide repeated-verification behavior for already verified evidence.
+- [x] Decide repeated-verification behavior for already verified evidence.
 - [ ] Add structured logs and metrics for intake, processing, review, retries,
   queue depth, and image cleanup.
 - [ ] Add backup/export guidance for the production database and raw-image store.

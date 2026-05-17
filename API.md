@@ -527,12 +527,21 @@ trusted collection-card instance.
   are derived by the service from the Scryfall printing ID.
 - The request creates a new trusted collection-card instance linked to the
   source unverified card.
+- A second verification attempt for the same unverified card is rejected with
+  `409 Conflict`; it does not create another trusted collection-card instance.
 - The raw image remains retained until it is at least 24 hours old and later
   removed by garbage collection.
 
 #### Response `200 OK`
 
 Returns the created trusted collection-card object.
+
+#### Errors
+
+| Status | Meaning |
+|---|---|
+| `404 Not Found` | Unverified card does not exist. |
+| `409 Conflict` | The unverified card was already human-verified. |
 
 ### `POST /unverified-cards/{unverified_card_id}/decision`
 
@@ -641,5 +650,3 @@ stable implementation contract:
 1. Authentication scheme and credential roles.
 2. Exact error payload shape shared across the API.
 3. Whether review-card selection should reserve a card for a reviewer.
-4. Whether a second verification attempt on the same unverified card is rejected
-   or treated as an idempotent read of the existing collection card.

@@ -166,6 +166,11 @@ def test_verification_creates_trusted_card(client):
     assert verified.json()["source_unverified_card_id"] == card["unverified_card_id"]
     cards = api.get(f"/collections/{collection['collection_id']}/cards").json()
     assert len(cards) == 1
+    repeated = api.post(
+        f"/unverified-cards/{card['unverified_card_id']}/verify",
+        json={"final_scryfall_id": "verified-id", "finish": "nonfoil"},
+    )
+    assert repeated.status_code == 409
 
 
 def test_transfers_are_atomic_and_report_all_failures(client):
