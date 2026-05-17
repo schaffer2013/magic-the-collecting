@@ -1,32 +1,58 @@
 # Magic: The Collecting
 
-`magic-the-collecting` is the beginning of a registration and validation service
-for a Magic: The Gathering card-sorting ecosystem.
+Local-first registration and validation service for physical Magic: The Gathering
+collections.
 
-The service is intended to:
+## What exists
 
-- accept image-based registration jobs from a sorter
-- store submitted images on the service side
-- create unverified collection-card records at intake time
-- later support review and exact-printing validation
-- maintain collections as sets of owned card instances, including duplicate
-  copies of the same exact printing
+- FastAPI JSON API plus integrated responsive web UI
+- PostgreSQL-oriented schema with GUID identifiers
+- unverified intake records separated from trusted collection cards
+- durable DB-backed recognition worker
+- trusted and unverified CSV exports
+- collection-scoped duplicate image protection
 
-## Current status
+## Local environments
 
-The repository currently contains:
+The project keeps manual use and automated testing separate:
 
-- product requirements for the registration service
-- product requirements for the sorter sequence framework
-- a first FastAPI service skeleton
-- SQLite-backed models for collections, registration jobs, and collection cards
-- multipart registration-job intake with raw-image storage
-- collection listing and CSV export endpoints
-- API documentation in [`API.md`](API.md)
+- **prod-like stack:** `compose.yml`, app on `http://localhost:8080`
+- **test stack:** `compose.test.yml`, app on `http://localhost:18080`
 
-## Development
+Copy the environment templates once:
 
-Install the project and development dependencies:
+```bash
+cp .env.prod.example .env.prod
+cp .env.test.example .env.test
+```
+
+Start the prod-like stack:
+
+```bash
+docker compose --env-file .env.prod up --build
+```
+
+Seed a default collection in a running local environment:
+
+```bash
+python -m registration_service.seed
+```
+
+Start only the test stack:
+
+```bash
+docker compose -f compose.test.yml --env-file .env.test up --build -d
+```
+
+Reset only test data:
+
+```bash
+./scripts/reset-test-env.ps1
+```
+
+## Local development
+
+Install:
 
 ```bash
 python -m pip install -e .[dev]
@@ -35,17 +61,31 @@ python -m pip install -e .[dev]
 Run tests:
 
 ```bash
-python -m pytest
+./scripts/run-test-env.ps1
 ```
 
-Run the service locally:
+`run-test-env.ps1` starts only the test Compose stack before running the suite.
+The tests themselves also use isolated test settings and temporary storage, so
+they do not touch the prod-like stack or its raw-image volume.
 
-```bash
-python -m uvicorn registration_service.main:app --reload
-```
+## UI
+
+The integrated UI includes:
+
+- collection overview
+- collection detail pages
+- recognition queues
+- human-review pages
+
+The same pages use responsive layouts for desktop and mobile widths.
+
+## Background processing
+
+The worker processes `unprocessed` cards one at a time and moves them into the
+`machine_recognized` queue. The current recognition adapter is intentionally a
+placeholder seam until fuzzy-enigma/Scryfall-backed recognition is integrated.
 
 ## API
 
-The API contract is documented in [`API.md`](API.md). The repository also
-contains `AGENTS.md`, which instructs future coding agents to keep the API
-documentation current whenever endpoints or response shapes change.
+See [`API.md`](API.md) for the consumer-ready API contract. Keep it updated with
+any route or payload changes.

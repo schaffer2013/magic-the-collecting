@@ -1,0 +1,23 @@
+services:
+  test-db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: magic_collecting_test
+      POSTGRES_USER: magic_test
+      POSTGRES_PASSWORD: magic_test
+    ports:
+      - "55432:5432"
+    volumes:
+      - test_pgdata:/var/lib/postgresql/data
+  test-app:
+    build: .
+    env_file: .env.test
+    ports:
+      - "18080:8080"
+    volumes:
+      - test_images:/app/data/raw-images
+    depends_on:
+      - test-db
+volumes:
+  test_pgdata:
+  test_images:

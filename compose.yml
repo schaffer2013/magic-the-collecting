@@ -1,0 +1,31 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: magic_collecting
+      POSTGRES_USER: magic
+      POSTGRES_PASSWORD: magic
+    ports:
+      - "5432:5432"
+    volumes:
+      - prod_pgdata:/var/lib/postgresql/data
+  app:
+    build: .
+    env_file: .env.prod
+    ports:
+      - "8080:8080"
+    volumes:
+      - prod_images:/app/data/raw-images
+    depends_on:
+      - db
+  worker:
+    build: .
+    command: python -c "from registration_service.worker import run_worker_forever; run_worker_forever()"
+    env_file: .env.prod
+    volumes:
+      - prod_images:/app/data/raw-images
+    depends_on:
+      - db
+volumes:
+  prod_pgdata:
+  prod_images:

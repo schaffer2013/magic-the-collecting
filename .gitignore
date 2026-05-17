@@ -18,6 +18,8 @@ dist/
 # Local service data
 registration_service.db
 data/raw-images/
+.env.prod
+.env.test
 
 # Editor / OS files
 .vscode/
