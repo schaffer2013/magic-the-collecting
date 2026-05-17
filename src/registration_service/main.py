@@ -10,13 +10,14 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request,
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .database import get_db, init_db
 from .images import parse_bounding_box
 from .models import CardState, Collection, CollectionCard, UnverifiedCard
+from .models import ReviewDecision, ReviewDecisionKind
 from .schemas import (
     BatchTransferCreate,
     CollectionCardRead,
@@ -24,11 +25,14 @@ from .schemas import (
     CollectionRead,
     CollectionSummaryRead,
     HumanVerificationCreate,
+    ReviewDecisionCreate,
+    CardSearchResult,
     ReviewCardRead,
     TransferCreate,
     UnverifiedCardRead,
 )
 from .services import candidate_ids, create_unverified_card, raw_image_url, verify_unverified_card
+from .catalog import get_card_metadata, search_cards
 
 PACKAGE_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=str(PACKAGE_DIR / "templates"))
@@ -59,6 +63,8 @@ def unverified_read(card: UnverifiedCard) -> UnverifiedCardRead:
         bounding_box=json.loads(card.bounding_box) if card.bounding_box else None,
         expected_scryfall_id=card.expected_scryfall_id,
         machine_candidate_scryfall_ids=candidate_ids(card),
+        machine_confidence=card.machine_confidence,
+        machine_review_reason=card.machine_review_reason,
         inducted_at=card.inducted_at,
     )
 
@@ -172,6 +178,7 @@ def get_next_review_card(
             select(UnverifiedCard).where(
                 UnverifiedCard.collection_id == collection_id,
                 UnverifiedCard.card_state == CardState.machine_recognized,
+                ~exists().where(ReviewDecision.unverified_card_id == UnverifiedCard.unverified_card_id),
             )
         )
     )
@@ -220,6 +227,46 @@ def verify_card(
     if card is None:
         raise HTTPException(status_code=404, detail="unverified card not found")
     return verify_unverified_card(db, card, scryfall_id=payload.final_scryfall_id, finish=payload.finish)
+
+
+@app.post("/unverified-cards/{unverified_card_id}/decision")
+def create_review_decision(
+    unverified_card_id: str,
+    payload: ReviewDecisionCreate,
+    db: Session = Depends(get_db),
+):
+    card = db.get(UnverifiedCard, unverified_card_id)
+    if card is None:
+        raise HTTPException(status_code=404, detail="unverified card not found")
+    if db.scalar(select(ReviewDecision).where(ReviewDecision.unverified_card_id == unverified_card_id)) is not None:
+        raise HTTPException(status_code=409, detail="unverified card already has a review decision")
+    if payload.decision_kind != ReviewDecisionKind.unreadable and (
+        payload.final_scryfall_id is None or payload.finish is None
+    ):
+        raise HTTPException(status_code=422, detail="final_scryfall_id and finish are required")
+    decision = ReviewDecision(
+        unverified_card_id=unverified_card_id,
+        decision_kind=payload.decision_kind,
+        final_scryfall_id=payload.final_scryfall_id,
+        notes=payload.notes,
+    )
+    db.add(decision)
+    collection_card = None
+    if payload.decision_kind != ReviewDecisionKind.unreadable:
+        collection_card = verify_unverified_card(
+            db, card, scryfall_id=payload.final_scryfall_id, finish=payload.finish
+        )
+    else:
+        db.commit()
+    return {
+        "decision_kind": payload.decision_kind,
+        "collection_card": CollectionCardRead.model_validate(collection_card) if collection_card else None,
+    }
+
+
+@app.get("/cards/search", response_model=list[CardSearchResult])
+def search_card_printings(q: str = Query(..., min_length=1)) -> list[CardSearchResult]:
+    return [CardSearchResult(**metadata.__dict__) for metadata in search_cards(q)]
 
 
 @app.get("/collections/{collection_id}/cards", response_model=list[CollectionCardRead])
@@ -403,8 +450,14 @@ def ui_review(unverified_card_id: str, request: Request, db: Session = Depends(g
     card = db.get(UnverifiedCard, unverified_card_id)
     if card is None:
         raise HTTPException(status_code=404, detail="unverified card not found")
+    reference = None
+    if card.expected_scryfall_id:
+        try:
+            reference = get_card_metadata(card.expected_scryfall_id)
+        except Exception:
+            reference = None
     return templates.TemplateResponse(
         request,
         "review.html",
-        {"card": unverified_read(card), "collection": card.collection},
+        {"card": unverified_read(card), "collection": card.collection, "reference": reference},
     )

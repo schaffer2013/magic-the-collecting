@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from registration_service.maintenance import cleanup_verified_raw_images
+from registration_service.catalog import CardMetadata
 from registration_service.models import CardState, CollectionCard, Finish, UnverifiedCard, ValidationSource, utcnow
 from registration_service.config import settings
 from registration_service.services import process_next_unprocessed_card
@@ -88,6 +89,7 @@ def test_worker_moves_one_card_to_machine_recognized(client):
         params={"card_state": "machine_recognized"},
     ).json()
     assert ready[0]["machine_candidate_scryfall_ids"] == ["expected-id"]
+    assert ready[0]["machine_confidence"] == 0.91
 
 
 def test_review_queue_is_collection_scoped_and_machine_only(client):
@@ -180,7 +182,54 @@ def test_review_ui_next_redirect_and_page(client):
     assert response.status_code == 303
     page = api.get(response.headers["location"])
     assert page.status_code == 200
-    assert "Human verify" in page.text
+    assert "Submit review" in page.text
+
+
+def test_review_decision_verifies_or_removes_unreadable_from_queue(client):
+    api, Session = client
+    collection = create_collection(api)
+    verified = intake(api, collection["collection_id"], image=b"decision-verify").json()
+    unreadable = intake(api, collection["collection_id"], image=b"decision-unreadable").json()
+    with Session() as db:
+        process_next_unprocessed_card(db)
+        process_next_unprocessed_card(db)
+
+    response = api.post(
+        f"/unverified-cards/{verified['unverified_card_id']}/decision",
+        json={
+            "decision_kind": "exactly_correct",
+            "final_scryfall_id": "verified-id",
+            "finish": "nonfoil",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["collection_card"]["source_unverified_card_id"] == verified["unverified_card_id"]
+
+    unreadable_response = api.post(
+        f"/unverified-cards/{unreadable['unverified_card_id']}/decision",
+        json={"decision_kind": "unreadable"},
+    )
+    assert unreadable_response.status_code == 200
+    assert api.get(f"/collections/{collection['collection_id']}/review-cards/next").status_code == 404
+
+
+def test_card_search_endpoint(client, monkeypatch):
+    api, _ = client
+    monkeypatch.setattr(
+        "registration_service.main.search_cards",
+        lambda query: [
+            CardMetadata(
+                scryfall_id="search-id",
+                name="Llanowar Elves",
+                set_code="7ed",
+                collector_number="253",
+                image_uri="https://example.invalid/card.jpg",
+            )
+        ],
+    )
+    response = api.get("/cards/search", params={"q": "llanowar elves"})
+    assert response.status_code == 200
+    assert response.json()[0]["scryfall_id"] == "search-id"
 
 
 def test_verified_image_cleanup_respects_age(client):
