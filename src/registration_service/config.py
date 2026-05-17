@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     raw_image_min_retention_hours: int = 24
     app_port: int = 8080
     fuzzy_enigma_catalog_path: Path = Path("data/card-engine/cards.sqlite3")
+    max_upload_bytes: int = 10 * 1024 * 1024
 
 
 settings = Settings()

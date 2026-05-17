@@ -91,13 +91,13 @@ Goal: improve reliability, observability, and operator confidence.
 
 - [ ] Add authentication and authorization for sorter clients and human users.
 - [ ] Define and implement a consistent API error envelope.
-- [ ] Add pagination to large list endpoints.
+- [x] Add pagination to large list endpoints.
 - [ ] Decide whether review selection needs reservation/locking semantics.
-- [ ] Decide repeated-verification behavior for already verified evidence.
+- [x] Decide repeated-verification behavior for already verified evidence.
 - [ ] Add structured logs and metrics for intake, processing, review, retries,
   queue depth, and image cleanup.
 - [ ] Add backup/export guidance for the production database and raw-image store.
-- [ ] Add upload constraints and validation for supported image formats/sizes.
+- [x] Add upload constraints and validation for supported image formats/sizes.
 
 ## Tier 3 — Improve collection operations
 
