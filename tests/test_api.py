@@ -124,6 +124,42 @@ def test_list_endpoints_support_limit_and_offset(client):
     assert len(cards) == 1
 
 
+def test_collection_cards_support_filters(client):
+    api, Session = client
+    collection = create_collection(api)
+    with Session() as db:
+        db.add_all(
+            [
+                CollectionCard(
+                    collection_id=collection["collection_id"],
+                    scryfall_id="elves-id",
+                    name="Llanowar Elves",
+                    set_code="7ed",
+                    collector_number="253",
+                    finish=Finish.nonfoil,
+                    validation_source=ValidationSource.human,
+                    validated_at=utcnow(),
+                ),
+                CollectionCard(
+                    collection_id=collection["collection_id"],
+                    scryfall_id="bolt-id",
+                    name="Lightning Bolt",
+                    set_code="lea",
+                    collector_number="161",
+                    finish=Finish.foil,
+                    validation_source=ValidationSource.human,
+                    validated_at=utcnow(),
+                ),
+            ]
+        )
+        db.commit()
+    assert len(api.get(f"/collections/{collection['collection_id']}/cards", params={"q": "elves"}).json()) == 1
+    assert len(api.get(f"/collections/{collection['collection_id']}/cards", params={"set_code": "lea"}).json()) == 1
+    assert len(api.get(f"/collections/{collection['collection_id']}/cards", params={"collector_number": "253"}).json()) == 1
+    assert len(api.get(f"/collections/{collection['collection_id']}/cards", params={"finish": "foil"}).json()) == 1
+    assert len(api.get(f"/collections/{collection['collection_id']}/cards", params={"scryfall_id": "elves-id"}).json()) == 1
+
+
 def test_worker_moves_one_card_to_machine_recognized(client):
     api, Session = client
     collection = create_collection(api)
@@ -197,8 +233,20 @@ def test_transfers_are_atomic_and_report_all_failures(client):
         json={"collection_card_ids": [card_id, "missing"], "target_collection_id": target["collection_id"]},
     )
     assert failed.status_code == 409
-    assert failed.json()["detail"]["failures"][0]["collection_card_id"] == "missing"
+    assert failed.json()["error"]["details"]["failures"][0]["collection_card_id"] == "missing"
     assert api.get(f"/collections/{source['collection_id']}/cards").json()[0]["collection_card_id"] == card_id
+
+
+def test_errors_use_consistent_envelope(client):
+    api, _ = client
+    response = api.get("/collections/missing/summary")
+    assert response.status_code == 404
+    assert response.json() == {
+        "error": {"code": "http_404", "message": "collection not found", "details": None}
+    }
+    validation = api.post("/collections", json={})
+    assert validation.status_code == 422
+    assert validation.json()["error"]["message"] == "request validation failed"
 
 
 def test_exports_and_ui_smoke(client):
@@ -219,6 +267,32 @@ def test_exports_and_ui_smoke(client):
     assert api.get("/ui/register").status_code == 200
     assert api.get(f"/ui/collections/{collection['collection_id']}").status_code == 200
     assert api.get(f"/ui/collections/{collection['collection_id']}/queue").status_code == 200
+
+
+def test_collection_detail_ui_exposes_exports_and_transfer_controls(client):
+    api, Session = client
+    source = create_collection(api, "Source")
+    create_collection(api, "Trade")
+    with Session() as db:
+        card = CollectionCard(
+            collection_id=source["collection_id"],
+            scryfall_id="id",
+            name="Name",
+            set_code="set",
+            collector_number="1",
+            finish=Finish.nonfoil,
+            validation_source=ValidationSource.human,
+            validated_at=utcnow(),
+        )
+        db.add(card)
+        db.commit()
+    page = api.get(f"/ui/collections/{source['collection_id']}")
+    assert page.status_code == 200
+    assert "Export trusted CSV" in page.text
+    assert "Export unverified CSV" in page.text
+    assert "transfer-form" in page.text
+    assert "batch-transfer-form" in page.text
+    assert 'name="collector_number"' in page.text
 
 
 def test_review_ui_next_redirect_and_page(client):

@@ -24,6 +24,9 @@ th, td { padding: .75rem; border-bottom: 1px solid #ddd; text-align: left; }
 .editor polygon { fill: #f004; stroke: #f00; stroke-width: .01; }
 .editor circle { fill: white; stroke: #f00; stroke-width: .015; }
 .actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.inline-actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.filter-grid { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); margin: 1rem 0; }
+.filter-grid label { display: grid; gap: .35rem; }
 .search-results { display: grid; gap: .5rem; }
 .search-result { text-align: left; background: #ead9cb; color: #241a14; }
 @media (max-width: 700px) {

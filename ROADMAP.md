@@ -90,7 +90,7 @@ verification.
 Goal: improve reliability, observability, and operator confidence.
 
 - [ ] Add authentication and authorization for sorter clients and human users.
-- [ ] Define and implement a consistent API error envelope.
+- [x] Define and implement a consistent API error envelope.
 - [x] Add pagination to large list endpoints.
 - [ ] Decide whether review selection needs reservation/locking semantics.
 - [x] Decide repeated-verification behavior for already verified evidence.
@@ -103,11 +103,11 @@ Goal: improve reliability, observability, and operator confidence.
 
 Goal: make the service pleasant beyond the minimum registration workflow.
 
-- [ ] Add UI controls for transferring trusted cards between collections.
-- [ ] Add UI controls for trusted and unverified CSV export.
-- [ ] Add collection search/filtering by name, set, collector number, finish, and
+- [x] Add UI controls for transferring trusted cards between collections.
+- [x] Add UI controls for trusted and unverified CSV export.
+- [x] Add collection search/filtering by name, set, collector number, finish, and
   Scryfall ID.
-- [ ] Add bulk card-selection patterns in the collection UI.
+- [x] Add bulk card-selection patterns in the collection UI.
 - [ ] Add richer reviewer search for exact printing resolution.
 - [ ] Add optional retained-image policy configuration.
 

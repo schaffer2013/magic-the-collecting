@@ -106,6 +106,7 @@ The integrated UI includes:
   four-point bounding boxes
 - review actions for oldest/newest/random queue navigation and browser-side
   human verification
+- collection detail controls for CSV exports plus single-card and batch transfers
 
 The same pages use responsive layouts for desktop and mobile widths.
 

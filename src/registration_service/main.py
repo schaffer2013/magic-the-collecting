@@ -7,7 +7,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import exists, func, select
@@ -47,6 +48,29 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Magic: The Collecting", version="0.2.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(PACKAGE_DIR / "static")), name="static")
+
+
+def error_payload(status_code: int, detail) -> dict:
+    if isinstance(detail, dict):
+        message = detail.get("message", "request failed")
+        details = {key: value for key, value in detail.items() if key != "message"} or None
+    else:
+        message = str(detail)
+        details = None
+    return {"error": {"code": f"http_{status_code}", "message": message, "details": details}}
+
+
+@app.exception_handler(HTTPException)
+def handle_http_exception(_: Request, exc: HTTPException) -> JSONResponse:
+    return JSONResponse(status_code=exc.status_code, content=error_payload(exc.status_code, exc.detail))
+
+
+@app.exception_handler(RequestValidationError)
+def handle_validation_exception(_: Request, exc: RequestValidationError) -> JSONResponse:
+    return JSONResponse(
+        status_code=422,
+        content=error_payload(422, {"message": "request validation failed", "issues": exc.errors()}),
+    )
 
 
 def unverified_read(card: UnverifiedCard) -> UnverifiedCardRead:
@@ -283,21 +307,29 @@ def search_card_printings(q: str = Query(..., min_length=1)) -> list[CardSearchR
 @app.get("/collections/{collection_id}/cards", response_model=list[CollectionCardRead])
 def list_collection_cards(
     collection_id: str,
+    q: str | None = Query(None),
+    set_code: str | None = Query(None),
+    collector_number: str | None = Query(None),
+    finish: str | None = Query(None),
+    scryfall_id: str | None = Query(None),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ) -> list[CollectionCard]:
     if db.get(Collection, collection_id) is None:
         raise HTTPException(status_code=404, detail="collection not found")
-    return list(
-        db.scalars(
-            select(CollectionCard)
-            .where(CollectionCard.collection_id == collection_id)
-            .order_by(CollectionCard.validated_at)
-            .limit(limit)
-            .offset(offset)
-        )
-    )
+    query = select(CollectionCard).where(CollectionCard.collection_id == collection_id)
+    if q:
+        query = query.where(CollectionCard.name.ilike(f"%{q}%"))
+    if set_code:
+        query = query.where(CollectionCard.set_code == set_code)
+    if collector_number:
+        query = query.where(CollectionCard.collector_number == collector_number)
+    if finish:
+        query = query.where(CollectionCard.finish == finish)
+    if scryfall_id:
+        query = query.where(CollectionCard.scryfall_id == scryfall_id)
+    return list(db.scalars(query.order_by(CollectionCard.validated_at).limit(limit).offset(offset)))
 
 
 @app.post("/collection-cards/{collection_card_id}/transfer", response_model=CollectionCardRead)
@@ -441,7 +473,16 @@ def ui_collections(request: Request, db: Session = Depends(get_db)):
 
 
 @app.get("/ui/collections/{collection_id}", response_class=HTMLResponse)
-def ui_collection_detail(collection_id: str, request: Request, db: Session = Depends(get_db)):
+def ui_collection_detail(
+    collection_id: str,
+    request: Request,
+    q: str | None = Query(None),
+    set_code: str | None = Query(None),
+    collector_number: str | None = Query(None),
+    finish: str | None = Query(None),
+    scryfall_id: str | None = Query(None),
+    db: Session = Depends(get_db),
+):
     collection = db.get(Collection, collection_id)
     if collection is None:
         raise HTTPException(status_code=404, detail="collection not found")
@@ -451,7 +492,19 @@ def ui_collection_detail(collection_id: str, request: Request, db: Session = Dep
         {
             "collection": collection,
             "summary": summary_for_collection(db, collection_id),
-            "cards": list_collection_cards(collection_id, 500, 0, db),
+            "cards": list_collection_cards(
+                collection_id, q, set_code, collector_number, finish, scryfall_id, 500, 0, db
+            ),
+            "transfer_targets": [
+                item for item in list_collections(500, 0, db) if item.collection_id != collection_id
+            ],
+            "filters": {
+                "q": q or "",
+                "set_code": set_code or "",
+                "collector_number": collector_number or "",
+                "finish": finish or "",
+                "scryfall_id": scryfall_id or "",
+            },
         },
     )
 
