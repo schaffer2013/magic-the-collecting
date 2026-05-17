@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Collections{% endblock %}
+{% block content %}
+<h1>Collections</h1>
+<div class="grid">
+{% for collection in collections %}
+  {% set summary = summaries[collection.collection_id] %}
+  <a class="card" href="/ui/collections/{{ collection.collection_id }}">
+    <h2>{{ collection.name }}</h2>
+    <p>{{ summary.trusted_collection_card_count }} trusted cards</p>
+    <p>{{ summary.machine_recognized_count }} ready for review</p>
+  </a>
+{% endfor %}
+</div>
+{% endblock %}

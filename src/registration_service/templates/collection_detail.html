@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}{{ collection.name }}{% endblock %}
+{% block content %}
+<h1>{{ collection.name }}</h1>
+<nav><a href="/ui/collections/{{ collection.collection_id }}/queue">Recognition queue</a></nav>
+<section class="stats">
+  <span>{{ summary.trusted_collection_card_count }} trusted</span>
+  <span>{{ summary.unprocessed_count }} unprocessed</span>
+  <span>{{ summary.machine_recognized_count }} ready</span>
+</section>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Name</th><th>Set</th><th>No.</th><th>Finish</th></tr></thead>
+  <tbody>
+  {% for card in cards %}
+    <tr><td>{{ card.name }}</td><td>{{ card.set_code }}</td><td>{{ card.collector_number }}</td><td>{{ card.finish.value }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}
