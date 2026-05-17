@@ -120,6 +120,18 @@ Creates a new collection.
 
 Lists all collections.
 
+#### Query parameters
+
+| Parameter | Type | Required | Meaning |
+|---|---|---:|---|
+| `q` | string | no | Case-insensitive substring match against canonical card name. |
+| `set_code` | string | no | Exact set-code filter. |
+| `collector_number` | string | no | Exact collector-number filter. |
+| `finish` | enum | no | Exact finish filter: `nonfoil`, `foil`, `etched`, or `glossy`. |
+| `scryfall_id` | string | no | Exact Scryfall printing ID filter. |
+| `limit` | integer | no | Maximum rows to return. Default `100`, maximum `500`. |
+| `offset` | integer | no | Number of matching rows to skip before returning results. Default `0`. |
+
 #### Response `200 OK`
 
 Array of collection objects using the same fields returned by `POST /collections`.
@@ -165,6 +177,13 @@ Lists trusted collection-card instances currently belonging to one collection.
 | Parameter | Type | Meaning |
 |---|---|---|
 | `collection_id` | GUID | Collection to inspect. |
+
+#### Query parameters
+
+| Parameter | Type | Required | Meaning |
+|---|---|---:|---|
+| `limit` | integer | no | Maximum rows to return. Default `100`, maximum `500`. |
+| `offset` | integer | no | Number of matching rows to skip before returning results. Default `0`. |
 
 #### Response `200 OK`
 
@@ -333,6 +352,8 @@ card.
 - The service computes an image hash scoped to the target collection.
 - If the same exact image was recently submitted to the same collection and the
   hash is still retained, the request fails with `409 Conflict`.
+- Supported upload media types are `image/jpeg`, `image/png`, and `image/webp`.
+- Raw uploads larger than the configured maximum size are rejected.
 
 #### Response `201 Created`
 
@@ -364,6 +385,8 @@ card.
 | `bounding_box` | array or null | Four-point intake polygon when provided. |
 | `expected_scryfall_id` | string or null | Optional sorter-provided identity hint. |
 | `machine_candidate_scryfall_ids` | array of strings | Machine candidates. Empty until processing occurs. |
+| `machine_confidence` | number or null | Confidence emitted by the machine recognizer. |
+| `machine_review_reason` | string or null | Recognition-side reason the card may need human attention. |
 | `inducted_at` | timestamp | Server-recorded acceptance time. |
 
 #### Errors
@@ -372,6 +395,8 @@ card.
 |---|---|
 | `404 Not Found` | Target collection does not exist. |
 | `409 Conflict` | Duplicate image recently submitted to the same collection. |
+| `413 Payload Too Large` | Raw image exceeds the configured maximum upload size. |
+| `415 Unsupported Media Type` | Raw image media type is not supported. |
 
 ## 6. Unverified cards and review
 
@@ -384,6 +409,8 @@ Lists unverified-card evidence records associated with one collection.
 | Parameter | Type | Required | Meaning |
 |---|---|---:|---|
 | `card_state` | enum | no | Optional filter: `unprocessed`, `machine_recognized`, or `human_verified`. |
+| `limit` | integer | no | Maximum rows to return. Default `100`, maximum `500`. |
+| `offset` | integer | no | Number of matching rows to skip before returning results. Default `0`. |
 
 #### Response `200 OK`
 
@@ -433,6 +460,8 @@ review.
 | `raw_image_url` | string | API path for retrieving the raw submitted image. |
 | `expected_scryfall_id` | string or null | Optional prior supplied during intake. |
 | `machine_candidate_scryfall_ids` | array of strings | High-likelihood machine candidates ordered by confidence when available. |
+| `machine_confidence` | number or null | Confidence emitted by fuzzy-enigma. |
+| `machine_review_reason` | string or null | Recognition-side review reason when available. |
 | `inducted_at` | timestamp | Intake time used for `oldest`/`newest` ordering. |
 
 #### Errors
@@ -503,12 +532,120 @@ trusted collection-card instance.
   are derived by the service from the Scryfall printing ID.
 - The request creates a new trusted collection-card instance linked to the
   source unverified card.
+- A second verification attempt for the same unverified card is rejected with
+  `409 Conflict`; it does not create another trusted collection-card instance.
 - The raw image remains retained until it is at least 24 hours old and later
   removed by garbage collection.
 
 #### Response `200 OK`
 
 Returns the created trusted collection-card object.
+
+#### Errors
+
+| Status | Meaning |
+|---|---|
+| `404 Not Found` | Unverified card does not exist. |
+| `409 Conflict` | The unverified card was already human-verified. |
+
+### `POST /unverified-cards/{unverified_card_id}/decision`
+
+Records the human review outcome for one machine-recognized unverified card.
+Use this endpoint for the browser review workflow when the reviewer needs to
+distinguish a correct machine result from a corrected or unusable result.
+
+#### Request body
+
+```json
+{
+  "decision_kind": "right_card_wrong_printing",
+  "final_scryfall_id": "verified-printing-id",
+  "finish": "nonfoil",
+  "notes": "Correct card, but the machine selected another printing."
+}
+```
+
+#### Request fields
+
+| Field | Type | Required | Meaning |
+|---|---|---:|---|
+| `decision_kind` | enum | yes | One of `exactly_correct`, `right_card_wrong_printing`, `wrong_card`, or `unreadable`. |
+| `final_scryfall_id` | string or null | conditionally | Required unless `decision_kind` is `unreadable`; final exact-printing ID selected by the reviewer. |
+| `finish` | enum or null | conditionally | Required unless `decision_kind` is `unreadable`; owned-copy finish. |
+| `notes` | string or null | no | Optional reviewer notes. |
+
+#### Behavior
+
+- Non-`unreadable` decisions also finalize the card and create the trusted
+  collection-card instance.
+- `unreadable` stores a review decision without creating trusted inventory.
+- Any card with a review decision is removed from the pending review queue.
+- A second decision for the same unverified card returns `409 Conflict`.
+
+#### Response `200 OK`
+
+```json
+{
+  "decision_kind": "right_card_wrong_printing",
+  "collection_card": {
+    "collection_card_id": "69e21ef1-63db-4f24-80eb-3c5f1f1b7da1",
+    "collection_id": "2f79ac7b-c85e-4d4c-a3a3-f1ab1cc079d7",
+    "source_unverified_card_id": "fb34ce40-5cf0-45fa-b61f-9b8fe2821328",
+    "scryfall_id": "verified-printing-id",
+    "name": "Llanowar Elves",
+    "set_code": "7ed",
+    "collector_number": "253",
+    "finish": "nonfoil",
+    "validation_source": "human",
+    "validated_at": "2026-05-17T20:10:00Z"
+  }
+}
+```
+
+For `unreadable`, `collection_card` is `null`.
+
+#### Errors
+
+| Status | Meaning |
+|---|---|
+| `404 Not Found` | Unverified card does not exist. |
+| `409 Conflict` | The card already has a review decision. |
+| `422 Unprocessable Entity` | A final Scryfall ID or finish is missing for a decision that requires verification. |
+
+### `GET /cards/search`
+
+Searches Scryfall printings to help a human reviewer choose the exact final
+printing.
+
+#### Query parameters
+
+| Parameter | Type | Required | Meaning |
+|---|---|---:|---|
+| `q` | string | yes | Scryfall search query. |
+
+#### Response `200 OK`
+
+```json
+[
+  {
+    "scryfall_id": "verified-printing-id",
+    "name": "Llanowar Elves",
+    "set_code": "7ed",
+    "collector_number": "253",
+    "image_uri": "https://..."
+  }
+]
+```
+
+#### Response fields
+
+| Field | Type | Meaning |
+|---|---|---|
+| `scryfall_id` | string | Exact-printing Scryfall ID. |
+| `name` | string | Canonical card name. |
+| `set_code` | string | Printing set code. |
+| `collector_number` | string | Printing collector number. |
+| `image_uri` | string or null | Canonical card image URL when available. |
 
 ## 7. Still-open contract items
 
@@ -518,7 +655,3 @@ stable implementation contract:
 1. Authentication scheme and credential roles.
 2. Exact error payload shape shared across the API.
 3. Whether review-card selection should reserve a card for a reviewer.
-4. Whether a second verification attempt on the same unverified card is rejected
-   or treated as an idempotent read of the existing collection card.
-5. Whether list endpoints need pagination in v1.
-6. Exact permitted raw-image formats and maximum upload size.

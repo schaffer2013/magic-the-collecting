@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .models import CardState, Finish, ValidationSource
+from .models import CardState, Finish, ReviewDecisionKind, ValidationSource
 
 
 class CollectionCreate(BaseModel):
@@ -41,6 +41,8 @@ class UnverifiedCardRead(BaseModel):
     bounding_box: list[list[float]] | None
     expected_scryfall_id: str | None
     machine_candidate_scryfall_ids: list[str]
+    machine_confidence: float | None
+    machine_review_reason: str | None
     inducted_at: datetime
 
 
@@ -51,6 +53,21 @@ class ReviewCardRead(UnverifiedCardRead):
 class HumanVerificationCreate(BaseModel):
     final_scryfall_id: str
     finish: Finish
+
+
+class ReviewDecisionCreate(BaseModel):
+    decision_kind: ReviewDecisionKind
+    final_scryfall_id: str | None = None
+    finish: Finish | None = None
+    notes: str | None = None
+
+
+class CardSearchResult(BaseModel):
+    scryfall_id: str
+    name: str
+    set_code: str
+    collector_number: str
+    image_uri: str | None
 
 
 class CollectionCardRead(BaseModel):
