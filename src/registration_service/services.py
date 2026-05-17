@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from datetime import timedelta
 from fastapi import HTTPException
 from sqlalchemy import delete, select
@@ -11,6 +12,8 @@ from .catalog import get_card_metadata
 from .config import settings
 from .images import derive_images, save_original_image
 from .models import CardState, CollectionCard, DuplicateImageHash, Finish, UnverifiedCard, ValidationSource, utcnow
+
+logger = logging.getLogger(__name__)
 
 
 def raw_image_url(card: UnverifiedCard) -> str:
@@ -62,6 +65,10 @@ def create_unverified_card(
     db.add(card)
     db.commit()
     db.refresh(card)
+    logger.info(
+        "unverified_card_created",
+        extra={"collection_id": collection_id, "unverified_card_id": card.unverified_card_id},
+    )
     return card
 
 
@@ -74,12 +81,28 @@ def process_next_unprocessed_card(db: Session) -> UnverifiedCard | None:
     )
     if card is None:
         return None
+    from .recognition import recognize_unverified_card
+
+    result = recognize_unverified_card(card)
     card.card_state = CardState.machine_recognized
-    candidates = [card.expected_scryfall_id] if card.expected_scryfall_id else []
-    card.machine_candidate_scryfall_ids = json.dumps(candidates)
+    card.machine_candidate_scryfall_ids = json.dumps(
+        [candidate.scryfall_id for candidate in result.top_k_candidates if candidate.scryfall_id]
+    )
+    card.machine_confidence = result.confidence
+    card.machine_review_reason = result.review_reason
+    card.machine_debug_payload = json.dumps(result.debug, default=str)
     card.machine_recognized_at = utcnow()
     db.commit()
     db.refresh(card)
+    logger.info(
+        "unverified_card_machine_recognized",
+        extra={
+            "collection_id": card.collection_id,
+            "unverified_card_id": card.unverified_card_id,
+            "machine_confidence": card.machine_confidence,
+            "machine_review_reason": card.machine_review_reason,
+        },
+    )
     return card
 
 
@@ -103,4 +126,13 @@ def verify_unverified_card(db: Session, card: UnverifiedCard, *, scryfall_id: st
     db.add(collection_card)
     db.commit()
     db.refresh(collection_card)
+    logger.info(
+        "unverified_card_human_verified",
+        extra={
+            "collection_id": card.collection_id,
+            "unverified_card_id": card.unverified_card_id,
+            "collection_card_id": collection_card.collection_card_id,
+            "scryfall_id": collection_card.scryfall_id,
+        },
+    )
     return collection_card

@@ -18,3 +18,7 @@ def run_worker_forever(poll_seconds: float = 1.0) -> None:
                 cleanup_verified_raw_images(db)
                 last_cleanup = now
         time.sleep(poll_seconds)
+
+
+if __name__ == "__main__":
+    run_worker_forever()

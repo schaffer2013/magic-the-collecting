@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from registration_service.maintenance import cleanup_verified_raw_images
+from registration_service.catalog import CardMetadata
 from registration_service.models import CardState, CollectionCard, Finish, UnverifiedCard, ValidationSource, utcnow
 from registration_service.config import settings
 from registration_service.services import process_next_unprocessed_card
@@ -67,12 +68,96 @@ def test_intake_summary_and_duplicate_conflict(client):
     assert summary["trusted_collection_card_count"] == 0
 
 
+def test_intake_rejects_unsupported_or_oversized_images(client, monkeypatch):
+    api, _ = client
+    collection = create_collection(api)
+    unsupported = api.post(
+        f"/collections/{collection['collection_id']}/unverified-cards",
+        files={"raw_image": ("card.txt", b"nope", "text/plain")},
+    )
+    assert unsupported.status_code == 415
+
+    from registration_service.main import settings as app_settings
+
+    monkeypatch.setattr(app_settings, "max_upload_bytes", 3)
+    oversized = intake(api, collection["collection_id"], image=b"1234")
+    assert oversized.status_code == 413
+
+
 def test_duplicate_hashes_are_collection_scoped(client):
     api, _ = client
     main = create_collection(api, "Main")
     trade = create_collection(api, "Trade")
     assert intake(api, main["collection_id"]).status_code == 201
     assert intake(api, trade["collection_id"]).status_code == 201
+
+
+def test_list_endpoints_support_limit_and_offset(client):
+    api, Session = client
+    first = create_collection(api, "A")
+    second = create_collection(api, "B")
+    third = create_collection(api, "C")
+    assert [item["collection_id"] for item in api.get("/collections", params={"limit": 1, "offset": 1}).json()] == [
+        second["collection_id"]
+    ]
+
+    first_card = intake(api, first["collection_id"], image=b"one").json()
+    second_card = intake(api, first["collection_id"], image=b"two").json()
+    with Session() as db:
+        process_next_unprocessed_card(db)
+        process_next_unprocessed_card(db)
+    unverified = api.get(
+        f"/collections/{first['collection_id']}/unverified-cards",
+        params={"limit": 1, "offset": 1},
+    ).json()
+    assert unverified[0]["unverified_card_id"] == second_card["unverified_card_id"]
+
+    for payload in (first_card, second_card):
+        api.post(
+            f"/unverified-cards/{payload['unverified_card_id']}/verify",
+            json={"final_scryfall_id": "verified-id", "finish": "nonfoil"},
+        )
+    cards = api.get(
+        f"/collections/{first['collection_id']}/cards",
+        params={"limit": 1, "offset": 1},
+    ).json()
+    assert len(cards) == 1
+
+
+def test_collection_cards_support_filters(client):
+    api, Session = client
+    collection = create_collection(api)
+    with Session() as db:
+        db.add_all(
+            [
+                CollectionCard(
+                    collection_id=collection["collection_id"],
+                    scryfall_id="elves-id",
+                    name="Llanowar Elves",
+                    set_code="7ed",
+                    collector_number="253",
+                    finish=Finish.nonfoil,
+                    validation_source=ValidationSource.human,
+                    validated_at=utcnow(),
+                ),
+                CollectionCard(
+                    collection_id=collection["collection_id"],
+                    scryfall_id="bolt-id",
+                    name="Lightning Bolt",
+                    set_code="lea",
+                    collector_number="161",
+                    finish=Finish.foil,
+                    validation_source=ValidationSource.human,
+                    validated_at=utcnow(),
+                ),
+            ]
+        )
+        db.commit()
+    assert len(api.get(f"/collections/{collection['collection_id']}/cards", params={"q": "elves"}).json()) == 1
+    assert len(api.get(f"/collections/{collection['collection_id']}/cards", params={"set_code": "lea"}).json()) == 1
+    assert len(api.get(f"/collections/{collection['collection_id']}/cards", params={"collector_number": "253"}).json()) == 1
+    assert len(api.get(f"/collections/{collection['collection_id']}/cards", params={"finish": "foil"}).json()) == 1
+    assert len(api.get(f"/collections/{collection['collection_id']}/cards", params={"scryfall_id": "elves-id"}).json()) == 1
 
 
 def test_worker_moves_one_card_to_machine_recognized(client):
@@ -88,6 +173,7 @@ def test_worker_moves_one_card_to_machine_recognized(client):
         params={"card_state": "machine_recognized"},
     ).json()
     assert ready[0]["machine_candidate_scryfall_ids"] == ["expected-id"]
+    assert ready[0]["machine_confidence"] == 0.91
 
 
 def test_review_queue_is_collection_scoped_and_machine_only(client):
@@ -116,6 +202,11 @@ def test_verification_creates_trusted_card(client):
     assert verified.json()["source_unverified_card_id"] == card["unverified_card_id"]
     cards = api.get(f"/collections/{collection['collection_id']}/cards").json()
     assert len(cards) == 1
+    repeated = api.post(
+        f"/unverified-cards/{card['unverified_card_id']}/verify",
+        json={"final_scryfall_id": "verified-id", "finish": "nonfoil"},
+    )
+    assert repeated.status_code == 409
 
 
 def test_transfers_are_atomic_and_report_all_failures(client):
@@ -142,8 +233,20 @@ def test_transfers_are_atomic_and_report_all_failures(client):
         json={"collection_card_ids": [card_id, "missing"], "target_collection_id": target["collection_id"]},
     )
     assert failed.status_code == 409
-    assert failed.json()["detail"]["failures"][0]["collection_card_id"] == "missing"
+    assert failed.json()["error"]["details"]["failures"][0]["collection_card_id"] == "missing"
     assert api.get(f"/collections/{source['collection_id']}/cards").json()[0]["collection_card_id"] == card_id
+
+
+def test_errors_use_consistent_envelope(client):
+    api, _ = client
+    response = api.get("/collections/missing/summary")
+    assert response.status_code == 404
+    assert response.json() == {
+        "error": {"code": "http_404", "message": "collection not found", "details": None}
+    }
+    validation = api.post("/collections", json={})
+    assert validation.status_code == 422
+    assert validation.json()["error"]["message"] == "request validation failed"
 
 
 def test_exports_and_ui_smoke(client):
@@ -166,6 +269,32 @@ def test_exports_and_ui_smoke(client):
     assert api.get(f"/ui/collections/{collection['collection_id']}/queue").status_code == 200
 
 
+def test_collection_detail_ui_exposes_exports_and_transfer_controls(client):
+    api, Session = client
+    source = create_collection(api, "Source")
+    create_collection(api, "Trade")
+    with Session() as db:
+        card = CollectionCard(
+            collection_id=source["collection_id"],
+            scryfall_id="id",
+            name="Name",
+            set_code="set",
+            collector_number="1",
+            finish=Finish.nonfoil,
+            validation_source=ValidationSource.human,
+            validated_at=utcnow(),
+        )
+        db.add(card)
+        db.commit()
+    page = api.get(f"/ui/collections/{source['collection_id']}")
+    assert page.status_code == 200
+    assert "Export trusted CSV" in page.text
+    assert "Export unverified CSV" in page.text
+    assert "transfer-form" in page.text
+    assert "batch-transfer-form" in page.text
+    assert 'name="collector_number"' in page.text
+
+
 def test_review_ui_next_redirect_and_page(client):
     api, Session = client
     collection = create_collection(api)
@@ -180,7 +309,54 @@ def test_review_ui_next_redirect_and_page(client):
     assert response.status_code == 303
     page = api.get(response.headers["location"])
     assert page.status_code == 200
-    assert "Human verify" in page.text
+    assert "Submit review" in page.text
+
+
+def test_review_decision_verifies_or_removes_unreadable_from_queue(client):
+    api, Session = client
+    collection = create_collection(api)
+    verified = intake(api, collection["collection_id"], image=b"decision-verify").json()
+    unreadable = intake(api, collection["collection_id"], image=b"decision-unreadable").json()
+    with Session() as db:
+        process_next_unprocessed_card(db)
+        process_next_unprocessed_card(db)
+
+    response = api.post(
+        f"/unverified-cards/{verified['unverified_card_id']}/decision",
+        json={
+            "decision_kind": "exactly_correct",
+            "final_scryfall_id": "verified-id",
+            "finish": "nonfoil",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["collection_card"]["source_unverified_card_id"] == verified["unverified_card_id"]
+
+    unreadable_response = api.post(
+        f"/unverified-cards/{unreadable['unverified_card_id']}/decision",
+        json={"decision_kind": "unreadable"},
+    )
+    assert unreadable_response.status_code == 200
+    assert api.get(f"/collections/{collection['collection_id']}/review-cards/next").status_code == 404
+
+
+def test_card_search_endpoint(client, monkeypatch):
+    api, _ = client
+    monkeypatch.setattr(
+        "registration_service.main.search_cards",
+        lambda query: [
+            CardMetadata(
+                scryfall_id="search-id",
+                name="Llanowar Elves",
+                set_code="7ed",
+                collector_number="253",
+                image_uri="https://example.invalid/card.jpg",
+            )
+        ],
+    )
+    response = api.get("/cards/search", params={"q": "llanowar elves"})
+    assert response.status_code == 200
+    assert response.json()[0]["scryfall_id"] == "search-id"
 
 
 def test_verified_image_cleanup_respects_age(client):
