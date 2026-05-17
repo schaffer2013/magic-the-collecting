@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .database import get_db, init_db
+from .images import parse_bounding_box
 from .models import CardState, Collection, CollectionCard, UnverifiedCard
 from .schemas import (
     BatchTransferCreate,
@@ -44,11 +45,18 @@ app.mount("/static", StaticFiles(directory=str(PACKAGE_DIR / "static")), name="s
 
 
 def unverified_read(card: UnverifiedCard) -> UnverifiedCardRead:
+    import json
+
     return UnverifiedCardRead(
         unverified_card_id=card.unverified_card_id,
         collection_id=card.collection_id,
         card_state=card.card_state,
         raw_image_url=raw_image_url(card),
+        overlay_image_url=(
+            f"/unverified-cards/{card.unverified_card_id}/overlay-image" if card.overlay_image_uri else None
+        ),
+        recognition_image_url=f"/unverified-cards/{card.unverified_card_id}/recognition-image",
+        bounding_box=json.loads(card.bounding_box) if card.bounding_box else None,
         expected_scryfall_id=card.expected_scryfall_id,
         machine_candidate_scryfall_ids=candidate_ids(card),
         inducted_at=card.inducted_at,
@@ -114,11 +122,16 @@ async def intake_unverified_card(
     collection_id: str,
     raw_image: UploadFile = File(...),
     sorter_expected_scryfall_id: str | None = Form(None),
+    bounding_box: str | None = Form(None),
     db: Session = Depends(get_db),
 ) -> UnverifiedCardRead:
     if db.get(Collection, collection_id) is None:
         raise HTTPException(status_code=404, detail="collection not found")
     image_bytes = await raw_image.read()
+    try:
+        parsed_bounding_box = parse_bounding_box(bounding_box)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     card = create_unverified_card(
         db,
         collection_id=collection_id,
@@ -126,6 +139,7 @@ async def intake_unverified_card(
         suffix=Path(raw_image.filename or "").suffix,
         media_type=raw_image.content_type,
         expected_scryfall_id=sorter_expected_scryfall_id,
+        bounding_box=parsed_bounding_box,
     )
     return unverified_read(card)
 
@@ -178,6 +192,22 @@ def get_unverified_raw_image(unverified_card_id: str, db: Session = Depends(get_
     if card is None or not Path(card.raw_image_uri).exists():
         raise HTTPException(status_code=404, detail="raw image not found")
     return FileResponse(card.raw_image_uri, media_type=card.raw_image_media_type)
+
+
+@app.get("/unverified-cards/{unverified_card_id}/overlay-image")
+def get_unverified_overlay_image(unverified_card_id: str, db: Session = Depends(get_db)) -> FileResponse:
+    card = db.get(UnverifiedCard, unverified_card_id)
+    if card is None or card.overlay_image_uri is None or not Path(card.overlay_image_uri).exists():
+        raise HTTPException(status_code=404, detail="overlay image not found")
+    return FileResponse(card.overlay_image_uri, media_type="image/png")
+
+
+@app.get("/unverified-cards/{unverified_card_id}/recognition-image")
+def get_unverified_recognition_image(unverified_card_id: str, db: Session = Depends(get_db)) -> FileResponse:
+    card = db.get(UnverifiedCard, unverified_card_id)
+    if card is None or not Path(card.recognition_image_uri).exists():
+        raise HTTPException(status_code=404, detail="recognition image not found")
+    return FileResponse(card.recognition_image_uri, media_type="image/png")
 
 
 @app.post("/unverified-cards/{unverified_card_id}/verify", response_model=CollectionCardRead)

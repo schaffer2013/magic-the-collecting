@@ -36,6 +36,8 @@ Implemented:
 - separate unverified/trusted card models
 - collection creation, summaries, intake, review selection, verification,
   transfer, and CSV export APIs
+- optional four-point intake geometry with original, overlay, and warped
+  recognition images
 - DB-backed worker loop that advances one `unprocessed` card to
   `machine_recognized`
 - responsive UI pages for collections, collection detail, queue, and review

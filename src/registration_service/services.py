@@ -3,15 +3,13 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import timedelta
-from pathlib import Path
-from uuid import uuid4
-
 from fastapi import HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from .catalog import get_card_metadata
 from .config import settings
+from .images import derive_images, save_original_image
 from .models import CardState, CollectionCard, DuplicateImageHash, Finish, UnverifiedCard, ValidationSource, utcnow
 
 
@@ -31,6 +29,7 @@ def create_unverified_card(
     suffix: str,
     media_type: str | None,
     expected_scryfall_id: str | None,
+    bounding_box: list[list[float]] | None,
 ) -> UnverifiedCard:
     image_hash = hashlib.sha256(image_bytes).hexdigest()
     cutoff = utcnow() - timedelta(seconds=settings.duplicate_hash_ttl_seconds)
@@ -44,13 +43,19 @@ def create_unverified_card(
     if existing is not None:
         raise HTTPException(status_code=409, detail="duplicate image recently submitted to this collection")
 
-    settings.raw_image_dir.mkdir(parents=True, exist_ok=True)
-    path = settings.raw_image_dir / f"{uuid4()}{suffix or '.bin'}"
-    path.write_bytes(image_bytes)
+    raw_image_path = save_original_image(image_bytes, suffix)
+    if bounding_box is None:
+        overlay_image_path = None
+        recognition_image_path = raw_image_path
+    else:
+        overlay_image_path, recognition_image_path = derive_images(image_bytes, bounding_box)
     card = UnverifiedCard(
         collection_id=collection_id,
-        raw_image_uri=str(path),
+        raw_image_uri=raw_image_path,
+        overlay_image_uri=overlay_image_path,
+        recognition_image_uri=recognition_image_path,
         raw_image_media_type=media_type,
+        bounding_box=json.dumps(bounding_box) if bounding_box is not None else None,
         expected_scryfall_id=expected_scryfall_id,
     )
     db.add(DuplicateImageHash(collection_id=collection_id, image_hash=image_hash))

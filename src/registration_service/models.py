@@ -66,7 +66,10 @@ class UnverifiedCard(Base):
         Enum(CardState), default=CardState.unprocessed, nullable=False
     )
     raw_image_uri: Mapped[str] = mapped_column(String(500), nullable=False)
+    overlay_image_uri: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    recognition_image_uri: Mapped[str] = mapped_column(String(500), nullable=False)
     raw_image_media_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    bounding_box: Mapped[str | None] = mapped_column(Text, nullable=True)
     expected_scryfall_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     machine_candidate_scryfall_ids: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
     machine_recognized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

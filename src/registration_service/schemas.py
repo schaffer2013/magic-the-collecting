@@ -36,6 +36,9 @@ class UnverifiedCardRead(BaseModel):
     collection_id: str
     card_state: CardState
     raw_image_url: str
+    overlay_image_url: str | None
+    recognition_image_url: str
+    bounding_box: list[list[float]] | None
     expected_scryfall_id: str | None
     machine_candidate_scryfall_ids: list[str]
     inducted_at: datetime

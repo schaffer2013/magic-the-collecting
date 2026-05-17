@@ -11,6 +11,8 @@ collections.
 - durable DB-backed recognition worker
 - trusted and unverified CSV exports
 - collection-scoped duplicate image protection
+- optional four-point intake bounding boxes with original, overlay, and warped
+  recognition images
 
 ## Local environments
 

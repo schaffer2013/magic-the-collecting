@@ -20,6 +20,28 @@ def intake(client, collection_id, image=b"image-bytes", expected=None):
     )
 
 
+def test_bounding_box_creates_overlay_and_recognition_images(client):
+    api, _ = client
+    from io import BytesIO
+    from PIL import Image
+
+    collection = create_collection(api)
+    image = Image.new("RGB", (100, 160), "white")
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    response = api.post(
+        f"/collections/{collection['collection_id']}/unverified-cards",
+        data={"bounding_box": "[[10,10],[90,10],[90,150],[10,150]]"},
+        files={"raw_image": ("card.png", buffer.getvalue(), "image/png")},
+    )
+    payload = response.json()
+    assert response.status_code == 201
+    assert payload["overlay_image_url"]
+    assert payload["recognition_image_url"]
+    assert api.get(payload["overlay_image_url"]).status_code == 200
+    assert api.get(payload["recognition_image_url"]).status_code == 200
+
+
 def test_health(client):
     api, _ = client
     assert api.get("/health").json() == {"status": "ok"}

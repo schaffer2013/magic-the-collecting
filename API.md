@@ -319,10 +319,15 @@ card.
 |---|---|---:|---|
 | `raw_image` | file | yes | Raw image payload for the physical card. |
 | `sorter_expected_scryfall_id` | string | no | Optional expected exact-printing Scryfall ID supplied as a hint, not authority. |
+| `bounding_box` | JSON string | no | Optional four-point polygon as `[[x1,y1],[x2,y2],[x3,y3],[x4,y4]]`, ordered clockwise from the upper-left card corner. |
 
 #### Behavior
 
 - The service records its own induction timestamp when the request is accepted.
+- The service always stores the original uploaded image.
+- If `bounding_box` is supplied, the service also stores a box-overlay image and
+  a perspective-warped image; the warped image is the recognition input.
+- If `bounding_box` is omitted, the whole image is used as the recognition input.
 - The caller does not supply capture time, pile information, sequence numbers,
   or run identifiers.
 - The service computes an image hash scoped to the target collection.
@@ -337,6 +342,9 @@ card.
   "collection_id": "2f79ac7b-c85e-4d4c-a3a3-f1ab1cc079d7",
   "card_state": "unprocessed",
   "raw_image_url": "/unverified-cards/fb34ce40-5cf0-45fa-b61f-9b8fe2821328/raw-image",
+  "overlay_image_url": "/unverified-cards/fb34ce40-5cf0-45fa-b61f-9b8fe2821328/overlay-image",
+  "recognition_image_url": "/unverified-cards/fb34ce40-5cf0-45fa-b61f-9b8fe2821328/recognition-image",
+  "bounding_box": [[10, 10], [210, 12], [208, 310], [12, 308]],
   "expected_scryfall_id": "optional-hint-id",
   "machine_candidate_scryfall_ids": [],
   "inducted_at": "2026-05-17T20:05:00Z"
@@ -351,6 +359,9 @@ card.
 | `collection_id` | GUID | Target collection associated with the evidence. |
 | `card_state` | string | Initial state, always `unprocessed` at intake. |
 | `raw_image_url` | string | API path for retrieving the submitted image. |
+| `overlay_image_url` | string or null | API path for the audit overlay image when a bounding box was supplied. |
+| `recognition_image_url` | string | API path for the image used by recognition. |
+| `bounding_box` | array or null | Four-point intake polygon when provided. |
 | `expected_scryfall_id` | string or null | Optional sorter-provided identity hint. |
 | `machine_candidate_scryfall_ids` | array of strings | Machine candidates. Empty until processing occurs. |
 | `inducted_at` | timestamp | Server-recorded acceptance time. |
@@ -443,6 +454,15 @@ Returns the stored raw image for one unverified card.
 #### Response `200 OK`
 
 Binary image payload using the stored media type where available.
+
+### `GET /unverified-cards/{unverified_card_id}/overlay-image`
+
+Returns the stored audit overlay image when intake supplied a bounding box.
+
+### `GET /unverified-cards/{unverified_card_id}/recognition-image`
+
+Returns the image used by the recognition worker. This is the warped card image
+when a bounding box was supplied, otherwise a whole-image copy.
 
 #### Errors
 
