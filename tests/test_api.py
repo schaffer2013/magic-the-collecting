@@ -160,5 +160,6 @@ def test_exports_and_ui_smoke(client):
         f"/collections/{collection['collection_id']}/unverified-cards/export.csv"
     ).text
     assert api.get("/").status_code == 200
+    assert api.get("/ui/register").status_code == 200
     assert api.get(f"/ui/collections/{collection['collection_id']}").status_code == 200
     assert api.get(f"/ui/collections/{collection['collection_id']}/queue").status_code == 200

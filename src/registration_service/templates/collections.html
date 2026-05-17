@@ -2,6 +2,7 @@
 {% block title %}Collections{% endblock %}
 {% block content %}
 <h1>Collections</h1>
+<p><a class="button-link" href="/ui/register">Register images</a></p>
 <div class="grid">
 {% for collection in collections %}
   {% set summary = summaries[collection.collection_id] %}

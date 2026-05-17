@@ -383,6 +383,11 @@ def ui_queue(collection_id: str, request: Request, db: Session = Depends(get_db)
     return templates.TemplateResponse(request, "queue.html", {"collection": collection, "cards": cards})
 
 
+@app.get("/ui/register", response_class=HTMLResponse)
+def ui_register(request: Request, db: Session = Depends(get_db)):
+    return templates.TemplateResponse(request, "register.html", {"collections": list_collections(db)})
+
+
 @app.get("/ui/unverified-cards/{unverified_card_id}/review", response_class=HTMLResponse)
 def ui_review(unverified_card_id: str, request: Request, db: Session = Depends(get_db)):
     card = db.get(UnverifiedCard, unverified_card_id)

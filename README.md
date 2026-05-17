@@ -78,6 +78,8 @@ The integrated UI includes:
 - collection detail pages
 - recognition queues
 - human-review pages
+- manual image registration with upload/camera capture and optional draggable
+  four-point bounding boxes
 
 The same pages use responsive layouts for desktop and mobile widths.
 

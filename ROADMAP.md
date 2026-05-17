@@ -41,6 +41,8 @@ Implemented:
 - DB-backed worker loop that advances one `unprocessed` card to
   `machine_recognized`
 - responsive UI pages for collections, collection detail, queue, and review
+- mobile-friendly manual intake UI with upload/camera capture and reusable
+  draggable default bounding boxes
 - automated tests using isolated temporary test storage
 - root-level entrypoint script for starting the local production-like stack
 

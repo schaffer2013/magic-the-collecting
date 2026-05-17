@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Register images{% endblock %}
+{% block content %}
+<h1>Register image</h1>
+<form id="registration-form" class="stack">
+  <label>
+    Collection
+    <select id="collection-id" required>
+      {% for collection in collections %}
+      <option value="{{ collection.collection_id }}">{{ collection.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>
+    Image
+    <input id="image-input" type="file" accept="image/*" capture="environment" required>
+  </label>
+  <label class="inline">
+    <input id="use-box" type="checkbox">
+    Use bounding box
+  </label>
+  <div id="editor" class="editor hidden">
+    <img id="preview" alt="Selected card preview">
+    <svg id="overlay" viewBox="0 0 1 1" preserveAspectRatio="none">
+      <polygon id="polygon"></polygon>
+      <g id="handles"></g>
+    </svg>
+  </div>
+  <div class="actions">
+    <button type="button" id="save-default">Save box as default</button>
+    <button type="button" id="clear-default">Clear saved default</button>
+    <button type="submit">Register image</button>
+  </div>
+  <p id="status" role="status"></p>
+</form>
+{% endblock %}
+{% block scripts %}
+<script src="/static/register.js"></script>
+{% endblock %}
