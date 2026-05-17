@@ -41,6 +41,8 @@ class UnverifiedCardRead(BaseModel):
     bounding_box: list[list[float]] | None
     expected_scryfall_id: str | None
     machine_candidate_scryfall_ids: list[str]
+    machine_confidence: float | None
+    machine_review_reason: str | None
     inducted_at: datetime
 
 

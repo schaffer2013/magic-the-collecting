@@ -364,6 +364,8 @@ card.
 | `bounding_box` | array or null | Four-point intake polygon when provided. |
 | `expected_scryfall_id` | string or null | Optional sorter-provided identity hint. |
 | `machine_candidate_scryfall_ids` | array of strings | Machine candidates. Empty until processing occurs. |
+| `machine_confidence` | number or null | Confidence emitted by the machine recognizer. |
+| `machine_review_reason` | string or null | Recognition-side reason the card may need human attention. |
 | `inducted_at` | timestamp | Server-recorded acceptance time. |
 
 #### Errors
@@ -433,6 +435,8 @@ review.
 | `raw_image_url` | string | API path for retrieving the raw submitted image. |
 | `expected_scryfall_id` | string or null | Optional prior supplied during intake. |
 | `machine_candidate_scryfall_ids` | array of strings | High-likelihood machine candidates ordered by confidence when available. |
+| `machine_confidence` | number or null | Confidence emitted by fuzzy-enigma. |
+| `machine_review_reason` | string or null | Recognition-side review reason when available. |
 | `inducted_at` | timestamp | Intake time used for `oldest`/`newest` ordering. |
 
 #### Errors

@@ -94,9 +94,10 @@ Convenience scripts live in `entrypoints/`.
 
 ## Background processing
 
-The worker processes `unprocessed` cards one at a time and moves them into the
-`machine_recognized` queue. The current recognition adapter is intentionally a
-placeholder seam until fuzzy-enigma/Scryfall-backed recognition is integrated.
+The worker processes `unprocessed` cards one at a time through fuzzy-enigma and
+moves them into the `machine_recognized` queue with ordered candidate IDs,
+confidence, and review evidence. Canonical verified-card metadata is resolved
+through Scrython.
 
 ## API
 

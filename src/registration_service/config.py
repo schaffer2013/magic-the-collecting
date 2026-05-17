@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     duplicate_hash_ttl_seconds: int = 3600
     raw_image_min_retention_hours: int = 24
     app_port: int = 8080
+    fuzzy_enigma_catalog_path: Path = Path("data/card-engine/cards.sqlite3")
 
 
 settings = Settings()

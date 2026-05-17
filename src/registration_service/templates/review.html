@@ -18,6 +18,8 @@
     <p><a href="/ui/collections/{{ collection.collection_id }}/queue">Back to {{ collection.name }} queue</a></p>
     <p><strong>Expected:</strong> {{ card.expected_scryfall_id or "None" }}</p>
     <p><strong>Candidates:</strong> {{ card.machine_candidate_scryfall_ids | join(", ") or "None" }}</p>
+    <p><strong>Machine confidence:</strong> {{ card.machine_confidence if card.machine_confidence is not none else "None" }}</p>
+    <p><strong>Review reason:</strong> {{ card.machine_review_reason or "None" }}</p>
     <form id="verify-form" class="stack">
       <label>
         Final Scryfall ID

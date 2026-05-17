@@ -88,6 +88,7 @@ def test_worker_moves_one_card_to_machine_recognized(client):
         params={"card_state": "machine_recognized"},
     ).json()
     assert ready[0]["machine_candidate_scryfall_ids"] == ["expected-id"]
+    assert ready[0]["machine_confidence"] == 0.91
 
 
 def test_review_queue_is_collection_scoped_and_machine_only(client):

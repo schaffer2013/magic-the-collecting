@@ -59,6 +59,8 @@ def unverified_read(card: UnverifiedCard) -> UnverifiedCardRead:
         bounding_box=json.loads(card.bounding_box) if card.bounding_box else None,
         expected_scryfall_id=card.expected_scryfall_id,
         machine_candidate_scryfall_ids=candidate_ids(card),
+        machine_confidence=card.machine_confidence,
+        machine_review_reason=card.machine_review_reason,
         inducted_at=card.inducted_at,
     )
 

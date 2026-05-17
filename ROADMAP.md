@@ -70,10 +70,10 @@ Known intentional gaps:
 Goal: make the current workflow genuinely usable from intake through human
 verification.
 
-- [ ] Replace placeholder catalog metadata with real Scryfall-backed canonical
+- [x] Replace placeholder catalog metadata with real Scryfall-backed canonical
   lookup for verified printing IDs.
-- [ ] Integrate fuzzy-enigma max-accuracy recognition into the worker path.
-- [ ] Persist ordered machine candidates, confidence, and debug evidence.
+- [x] Integrate fuzzy-enigma max-accuracy recognition into the worker path.
+- [x] Persist ordered machine candidates, confidence, and debug evidence.
 - [x] Add browser-side human verification submission from the review UI.
 - [ ] Show canonical reference image beside the raw uploaded card image.
 - [ ] Add review decisions for:

@@ -74,9 +74,16 @@ def process_next_unprocessed_card(db: Session) -> UnverifiedCard | None:
     )
     if card is None:
         return None
+    from .recognition import recognize_unverified_card
+
+    result = recognize_unverified_card(card)
     card.card_state = CardState.machine_recognized
-    candidates = [card.expected_scryfall_id] if card.expected_scryfall_id else []
-    card.machine_candidate_scryfall_ids = json.dumps(candidates)
+    card.machine_candidate_scryfall_ids = json.dumps(
+        [candidate.scryfall_id for candidate in result.top_k_candidates if candidate.scryfall_id]
+    )
+    card.machine_confidence = result.confidence
+    card.machine_review_reason = result.review_reason
+    card.machine_debug_payload = json.dumps(result.debug, default=str)
     card.machine_recognized_at = utcnow()
     db.commit()
     db.refresh(card)
