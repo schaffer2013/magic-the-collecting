@@ -295,8 +295,19 @@ def test_collection_detail_ui_exposes_exports_and_transfer_controls(client):
     assert 'name="collector_number"' in page.text
 
 
-def test_review_ui_next_redirect_and_page(client):
+def test_review_ui_next_redirect_and_page(client, monkeypatch):
     api, Session = client
+    monkeypatch.setattr(
+        "registration_service.main.get_card_metadata",
+        lambda scryfall_id: CardMetadata(
+            scryfall_id=scryfall_id,
+            name="Known Card",
+            set_code="tst",
+            collector_number="1",
+            image_uri="https://example.invalid/card.jpg",
+            lang="en",
+        ),
+    )
     collection = create_collection(api)
     intake(api, collection["collection_id"], image=b"review-ui")
     with Session() as db:
@@ -310,7 +321,7 @@ def test_review_ui_next_redirect_and_page(client):
     page = api.get(response.headers["location"])
     assert page.status_code == 200
     assert "Submit review" in page.text
-    assert 'id="card-search-set-code"' in page.text
+    assert 'const REFERENCE_NAME = "Known Card";' in page.text
 
 
 def test_review_decision_verifies_or_removes_unreadable_from_queue(client):

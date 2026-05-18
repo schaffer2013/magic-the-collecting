@@ -613,9 +613,13 @@ def ui_review(unverified_card_id: str, request: Request, db: Session = Depends(g
     if card is None:
         raise HTTPException(status_code=404, detail="unverified card not found")
     reference = None
-    if card.expected_scryfall_id:
+    reference_scryfall_id = card.expected_scryfall_id
+    if reference_scryfall_id is None:
+        machine_candidates = candidate_ids(card)
+        reference_scryfall_id = machine_candidates[0] if machine_candidates else None
+    if reference_scryfall_id:
         try:
-            reference = get_card_metadata(card.expected_scryfall_id)
+            reference = get_card_metadata(reference_scryfall_id)
         except Exception:
             reference = None
     return templates.TemplateResponse(
