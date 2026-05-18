@@ -8,7 +8,33 @@
 </head>
 <body>
   <header><a href="/">Magic: The Collecting</a></header>
-  <main>{% block content %}{% endblock %}</main>
+  <div class="layout">
+    <nav class="sidebar">
+      <ul>
+        <li><a href="/ui/collections">Collections</a></li>
+        <li><a href="/ui/recognition-queue">Recognition Queue</a></li>
+        <li><a href="/ui/register">Register Images</a></li>
+      </ul>
+      <hr>
+      <div class="sidebar-collections">
+        <strong style="margin-left: 0.5rem;">Cards to review</strong>
+        <ul>
+        {% if sidebar_review_items %}
+          {% for item in sidebar_review_items %}
+            <li class="{% if item.pending_review_count == 0 %}empty-review-queue{% endif %}">
+              <a href="/ui/collections/{{ item.collection_id }}/queue">
+                {% if item.pending_review_count > 0 %}({{ item.pending_review_count }}) {% endif %}{{ item.name }}
+              </a>
+            </li>
+          {% endfor %}
+        {% else %}
+          <li><em>No collections</em></li>
+        {% endif %}
+        </ul>
+      </div>
+    </nav>
+    <main>{% block content %}{% endblock %}</main>
+  </div>
   {% block scripts %}{% endblock %}
 </body>
 </html>

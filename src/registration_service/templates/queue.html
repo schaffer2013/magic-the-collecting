@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Queue · {{ collection.name }}{% endblock %}
+{% block title %}Review queue · {{ collection.name }}{% endblock %}
 {% block content %}
-<h1>{{ collection.name }} queue</h1>
+<h1>{{ collection.name }} review queue</h1>
 <nav class="actions">
   <a class="button-link" href="/ui/collections/{{ collection.collection_id }}/review/next?strategy=oldest">Review oldest</a>
   <a class="button-link" href="/ui/collections/{{ collection.collection_id }}/review/next?strategy=newest">Review newest</a>

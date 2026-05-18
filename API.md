@@ -140,11 +140,6 @@ Lists all collections.
 
 | Parameter | Type | Required | Meaning |
 |---|---|---:|---|
-| `q` | string | no | Case-insensitive substring match against canonical card name. |
-| `set_code` | string | no | Exact set-code filter. |
-| `collector_number` | string | no | Exact collector-number filter. |
-| `finish` | enum | no | Exact finish filter: `nonfoil`, `foil`, `etched`, or `glossy`. |
-| `scryfall_id` | string | no | Exact Scryfall printing ID filter. |
 | `limit` | integer | no | Maximum rows to return. Default `100`, maximum `500`. |
 | `offset` | integer | no | Number of matching rows to skip before returning results. Default `0`. |
 
@@ -180,7 +175,7 @@ Returns state counts for one collection.
 |---|---|---|
 | `collection_id` | GUID | Collection summarized. |
 | `unprocessed_count` | integer | Number of intake records waiting for background recognition. |
-| `machine_recognized_count` | integer | Number of intake records ready for human review. |
+| `machine_recognized_count` | integer | Number of intake records currently in the `machine_recognized` state. |
 | `human_verified_unverified_count` | integer | Number of evidence records already human-verified. |
 | `trusted_collection_card_count` | integer | Number of trusted owned card instances in the collection. |
 
@@ -198,6 +193,11 @@ Lists trusted collection-card instances currently belonging to one collection.
 
 | Parameter | Type | Required | Meaning |
 |---|---|---:|---|
+| `q` | string | no | Case-insensitive substring match against canonical card name. |
+| `set_code` | string | no | Exact set-code filter. |
+| `collector_number` | string | no | Exact collector-number filter. |
+| `finish` | enum | no | Exact finish filter: `nonfoil`, `foil`, `etched`, or `glossy`. |
+| `scryfall_id` | string | no | Exact Scryfall printing ID filter. |
 | `limit` | integer | no | Maximum rows to return. Default `100`, maximum `500`. |
 | `offset` | integer | no | Number of matching rows to skip before returning results. Default `0`. |
 
@@ -235,6 +235,12 @@ Lists trusted collection-card instances currently belonging to one collection.
 | `validation_source` | string | Source of final validation. For v1, expected to be `human`. |
 | `validated_at` | timestamp | Time human verification finalized the card. |
 
+#### Errors
+
+| Status | Meaning |
+|---|---|
+| `404 Not Found` | Collection does not exist. |
+
 ### `POST /collection-cards/{collection_card_id}/transfer`
 
 Moves one trusted card instance to another collection.
@@ -262,6 +268,12 @@ Moves one trusted card instance to another collection.
 #### Response `200 OK`
 
 Returns the updated collection-card object.
+
+#### Errors
+
+| Status | Meaning |
+|---|---|
+| `404 Not Found` | The source collection card or target collection does not exist. |
 
 ### `POST /collection-cards/transfer`
 
@@ -325,6 +337,12 @@ Exports trusted collection cards only.
 collection_card_id,collection_id,source_unverified_card_id,scryfall_id,name,set_code,collector_number,finish,validation_source,validated_at
 ```
 
+#### Errors
+
+| Status | Meaning |
+|---|---|
+| `404 Not Found` | Collection does not exist. |
+
 ### `GET /collections/{collection_id}/unverified-cards/export.csv`
 
 Exports unverified-card evidence records separately from the trusted collection
@@ -335,6 +353,12 @@ export.
 ```text
 unverified_card_id,collection_id,card_state,raw_image_uri,expected_scryfall_id,machine_candidate_scryfall_ids,inducted_at
 ```
+
+#### Errors
+
+| Status | Meaning |
+|---|---|
+| `404 Not Found` | Collection does not exist. |
 
 ## 5. Intake
 
@@ -389,6 +413,8 @@ card.
   "bounding_box": [[10, 10], [210, 12], [208, 310], [12, 308]],
   "expected_scryfall_id": "optional-hint-id",
   "machine_candidate_scryfall_ids": [],
+  "machine_confidence": null,
+  "machine_review_reason": null,
   "inducted_at": "2026-05-17T20:05:00Z"
 }
 ```
@@ -437,6 +463,12 @@ Lists unverified-card evidence records associated with one collection.
 
 Array of unverified-card objects.
 
+#### Errors
+
+| Status | Meaning |
+|---|---|
+| `404 Not Found` | Collection does not exist. |
+
 ### `GET /collections/{collection_id}/review-cards/next`
 
 Returns one `machine_recognized` card from a specific collection for human
@@ -465,11 +497,16 @@ leaves the review queue only after a review decision is recorded.
   "collection_id": "2f79ac7b-c85e-4d4c-a3a3-f1ab1cc079d7",
   "card_state": "machine_recognized",
   "raw_image_url": "/unverified-cards/fb34ce40-5cf0-45fa-b61f-9b8fe2821328/raw-image",
+  "overlay_image_url": null,
+  "recognition_image_url": "/unverified-cards/fb34ce40-5cf0-45fa-b61f-9b8fe2821328/recognition-image",
+  "bounding_box": null,
   "expected_scryfall_id": "expected-printing-id",
   "machine_candidate_scryfall_ids": [
     "expected-printing-id",
     "alternate-printing-id"
   ],
+  "machine_confidence": 0.91,
+  "machine_review_reason": "low confidence",
   "inducted_at": "2026-05-17T20:05:00Z"
 }
 ```
@@ -482,6 +519,9 @@ leaves the review queue only after a review decision is recorded.
 | `collection_id` | GUID | Collection associated with the evidence. |
 | `card_state` | string | Current evidence state. For this endpoint, always `machine_recognized`. |
 | `raw_image_url` | string | API path for retrieving the raw submitted image. |
+| `overlay_image_url` | string or null | API path for the audit overlay image when a bounding box was supplied. |
+| `recognition_image_url` | string | API path for the image used by recognition. |
+| `bounding_box` | array or null | Four-point intake polygon when provided. |
 | `expected_scryfall_id` | string or null | Optional prior supplied during intake. |
 | `machine_candidate_scryfall_ids` | array of strings | High-likelihood machine candidates ordered by confidence when available. |
 | `machine_confidence` | number or null | Confidence emitted by fuzzy-enigma. |
@@ -623,11 +663,14 @@ distinguish a correct machine result from a corrected or unusable result.
     "finish": "nonfoil",
     "validation_source": "human",
     "validated_at": "2026-05-17T20:10:00Z"
-  }
+  },
+  "next_ui_url": "/ui/collections/2f79ac7b-c85e-4d4c-a3a3-f1ab1cc079d7/queue"
 }
 ```
 
-For `unreadable`, `collection_card` is `null`.
+For `unreadable`, `collection_card` is `null`. `next_ui_url` points back to
+that collection's UI review queue while pending review cards remain, or `/`
+when the collection has no remaining cards to review.
 
 #### Errors
 
@@ -646,10 +689,11 @@ printing.
 
 | Parameter | Type | Required | Meaning |
 |---|---|---:|---|
-| `q` | string | yes | Scryfall search query. |
+| `q` | string | yes | Scryfall search query (supports full syntax, e.g. `!"Plains"` for exact name). |
 | `set_code` | string | no | Restrict results to one set code. |
 | `collector_number` | string | no | Restrict results to one collector number. |
 | `lang` | string | no | Restrict results to one Scryfall language code. |
+| `limit` | integer | no | Maximum results to return (1–100, default 25). |
 
 #### Response `200 OK`
 
@@ -676,6 +720,27 @@ printing.
 | `collector_number` | string | Printing collector number. |
 | `image_uri` | string or null | Canonical card image URL when available. |
 | `lang` | string or null | Scryfall language code when available. |
+
+---
+
+### `GET /cards/autocomplete`
+
+Returns Scryfall card name suggestions for a partial query string. Intended
+for powering the live-search autocomplete in the review UI.
+
+#### Query parameters
+
+| Parameter | Type | Required | Meaning |
+|---|---|---:|---|
+| `q` | string | yes | Partial card name (minimum 2 characters). |
+
+#### Response `200 OK`
+
+```json
+["Plains", "Plainshifter", "Plain Truth"]
+```
+
+Up to 20 matching card names are returned as a plain JSON array of strings.
 
 ## 7. Still-open contract items
 
