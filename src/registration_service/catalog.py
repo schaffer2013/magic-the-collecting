@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -18,6 +19,7 @@ class CardMetadata:
 
 @lru_cache(maxsize=2048)
 def get_card_metadata(scryfall_id: str) -> CardMetadata:
+    time.sleep(0.1)  # Scryfall rate limit
     card = scrython.cards.ById(id=scryfall_id)
     image_uris = getattr(card, "image_uris", None)
     image_uri = image_uris.get("normal") if isinstance(image_uris, dict) else None
@@ -37,7 +39,7 @@ def search_cards(
     set_code: str | None = None,
     collector_number: str | None = None,
     lang: str | None = None,
-    limit: int = 10,
+    limit: int = 25,
 ) -> list[CardMetadata]:
     filters = [query]
     if set_code:
@@ -46,6 +48,7 @@ def search_cards(
         filters.append(f"cn:{collector_number}")
     if lang:
         filters.append(f"lang:{lang}")
+    time.sleep(0.1)  # Scryfall rate limit
     result = scrython.cards.Search(q=" ".join(filters), unique="prints")
     cards = []
     for payload in result.data[:limit]:
@@ -61,3 +64,10 @@ def search_cards(
             )
         )
     return cards
+
+
+@lru_cache(maxsize=512)
+def autocomplete_card_names(query: str) -> list[str]:
+    time.sleep(0.1)  # Scryfall rate limit
+    result = scrython.cards.Autocomplete(q=query)
+    return list(result.data[:20])

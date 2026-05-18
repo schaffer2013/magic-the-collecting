@@ -1,5 +1,3 @@
-
-
 from __future__ import annotations
 
 import csv
@@ -11,7 +9,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse, PlainTextResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import exists, func, select
@@ -41,11 +39,8 @@ from .config import settings
 
 PACKAGE_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=str(PACKAGE_DIR / "templates"))
-import datetime
-import os
 logger = logging.getLogger(__name__)
 
-# --- LIFESPAN FUNCTION MUST BE DEFINED BEFORE APP ---
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
@@ -53,31 +48,6 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Magic: The Collecting", version="0.2.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(PACKAGE_DIR / "static")), name="static")
-
-# --- LOG ENDPOINT AND HELPER ---
-def get_today_log_path():
-    # Assumes logs are written to a file with the date in the filename, e.g. logs/app-YYYY-MM-DD.log
-    log_dir = os.environ.get("LOG_DIR") or str(PACKAGE_DIR / ".." / "logs")
-    today = datetime.date.today().strftime("%Y-%m-%d")
-    for fname in os.listdir(log_dir):
-        if today in fname and fname.endswith(".log"):
-            return os.path.join(log_dir, fname)
-    return None
-
-@app.get("/logs/today", response_class=PlainTextResponse)
-def get_today_logs(request: Request):
-    client_host = request.client.host if request.client else None
-    if client_host not in ("127.0.0.1", "::1", "localhost"):
-        raise HTTPException(status_code=403, detail="Logs only available from localhost")
-    log_path = get_today_log_path()
-    if not log_path or not os.path.exists(log_path):
-        raise HTTPException(status_code=404, detail="Today's log file not found")
-    with open(log_path, "r", encoding="utf-8") as f:
-        return f.read()
-
-
-
-
 
 def error_payload(status_code: int, detail) -> dict:
     if isinstance(detail, dict):
@@ -141,6 +111,32 @@ def summary_for_collection(db: Session, collection_id: str) -> CollectionSummary
         human_verified_unverified_count=counts.get(CardState.human_verified, 0),
         trusted_collection_card_count=trusted_count or 0,
     )
+
+
+def sidebar_review_items(db: Session) -> list[dict[str, object]]:
+    items = []
+    for collection in list_collections(500, 0, db):
+        collection_pending_review_count = pending_review_count(db, collection.collection_id)
+        items.append(
+            {
+                "collection_id": collection.collection_id,
+                "name": collection.name,
+                "pending_review_count": collection_pending_review_count,
+            }
+        )
+    return sorted(items, key=lambda item: (-int(item["pending_review_count"]), str(item["name"]).casefold()))
+
+
+def pending_review_count(db: Session, collection_id: str) -> int:
+    return db.scalar(
+        select(func.count())
+        .select_from(UnverifiedCard)
+        .where(
+            UnverifiedCard.collection_id == collection_id,
+            UnverifiedCard.card_state == CardState.machine_recognized,
+            ~exists().where(ReviewDecision.unverified_card_id == UnverifiedCard.unverified_card_id),
+        )
+    ) or 0
 
 
 @app.get("/health")
@@ -327,6 +323,11 @@ def create_review_decision(
     return {
         "decision_kind": payload.decision_kind,
         "collection_card": CollectionCardRead.model_validate(collection_card) if collection_card else None,
+        "next_ui_url": (
+            f"/ui/collections/{card.collection_id}/queue"
+            if pending_review_count(db, card.collection_id) > 0
+            else "/"
+        ),
     }
 
 
@@ -538,7 +539,7 @@ def ui_collections(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(
         request,
         "collections.html",
-        {"collections": collections, "summaries": summaries, "sidebar_collections": collections},
+        {"collections": collections, "summaries": summaries, "sidebar_review_items": sidebar_review_items(db)},
     )
 
 
@@ -586,9 +587,57 @@ def ui_queue(collection_id: str, request: Request, db: Session = Depends(get_db)
     collection = db.get(Collection, collection_id)
     if collection is None:
         raise HTTPException(status_code=404, detail="collection not found")
-    cards = list_unverified_cards(collection_id, CardState.machine_recognized, 500, 0, db)
+    cards = [
+        unverified_read(card)
+        for card in db.scalars(
+            select(UnverifiedCard)
+            .where(
+                UnverifiedCard.collection_id == collection_id,
+                UnverifiedCard.card_state == CardState.machine_recognized,
+                ~exists().where(ReviewDecision.unverified_card_id == UnverifiedCard.unverified_card_id),
+            )
+            .order_by(UnverifiedCard.inducted_at)
+            .limit(500)
+        )
+    ]
+    return templates.TemplateResponse(
+        request,
+        "queue.html",
+        {"collection": collection, "cards": cards, "sidebar_review_items": sidebar_review_items(db)},
+    )
+
+
+@app.get("/ui/recognition-queue", response_class=HTMLResponse)
+def ui_recognition_queue(request: Request, db: Session = Depends(get_db)):
+    cards = db.scalars(
+        select(UnverifiedCard)
+        .where(UnverifiedCard.card_state == CardState.unprocessed)
+        .order_by(UnverifiedCard.inducted_at)
+        .limit(500)
+    ).all()
     collections = list_collections(500, 0, db)
-    return templates.TemplateResponse(request, "queue.html", {"collection": collection, "cards": cards, "sidebar_collections": collections})
+    return templates.TemplateResponse(
+        request,
+        "recognition_queue.html",
+        {
+            "items": [
+                {
+                    "card": unverified_read(card),
+                    "collection_id": card.collection_id,
+                    "collection_name": card.collection.name,
+                }
+                for card in cards
+            ],
+            "sidebar_review_items": sidebar_review_items(db),
+        },
+    )
+
+
+@app.get("/ui/collections/{collection_id}/recognition-queue")
+def ui_collection_recognition_queue_redirect(collection_id: str, db: Session = Depends(get_db)):
+    if db.get(Collection, collection_id) is None:
+        raise HTTPException(status_code=404, detail="collection not found")
+    return RedirectResponse(url="/ui/recognition-queue", status_code=303)
 
 
 @app.get("/ui/collections/{collection_id}/review/next")
@@ -604,7 +653,11 @@ def ui_next_review(
 @app.get("/ui/register", response_class=HTMLResponse)
 def ui_register(request: Request, db: Session = Depends(get_db)):
     collections = list_collections(500, 0, db)
-    return templates.TemplateResponse(request, "register.html", {"collections": collections, "sidebar_collections": collections})
+    return templates.TemplateResponse(
+        request,
+        "register.html",
+        {"collections": collections, "sidebar_review_items": sidebar_review_items(db)},
+    )
 
 
 @app.get("/ui/unverified-cards/{unverified_card_id}/review", response_class=HTMLResponse)
@@ -625,7 +678,12 @@ def ui_review(unverified_card_id: str, request: Request, db: Session = Depends(g
     return templates.TemplateResponse(
         request,
         "review.html",
-        {"card": unverified_read(card), "collection": card.collection, "reference": reference},
+        {
+            "card": unverified_read(card),
+            "collection": card.collection,
+            "reference": reference,
+            "sidebar_review_items": sidebar_review_items(db),
+        },
     )
 
 

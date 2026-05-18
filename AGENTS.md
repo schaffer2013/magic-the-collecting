@@ -20,6 +20,19 @@ before considering the work complete.
   A submitted card creates an unverified card associated with a target
   collection; only human verification creates a collection card.
 
+## Scryfall API usage
+
+- Scryfall enforces a rate limit of roughly 50–100 ms between requests. Any
+  code that calls Scryfall (directly or via scrython) must respect this limit.
+  Add a small delay (at minimum 100 ms) between successive calls and never
+  fire requests in tight loops or batch them without throttling.
+- Prefer caching catalog data (set lists, card printings) locally rather than
+  re-fetching the same data on every request.
+- Always include a descriptive `User-Agent` header that identifies this
+  project, as required by Scryfall's API guidelines.
+- During development and testing, avoid hammering the live Scryfall API.
+  Use cached fixtures or a local catalog where possible.
+
 ## Git workflow
 
 - Treat `main` as a stable integration branch, not the normal place to do work.

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Recognition queue{% endblock %}
+{% block content %}
+<h1>Recognition queue</h1>
+<p>Cards across all collections waiting for the background worker to run machine recognition.</p>
+<nav class="actions">
+  <a class="button-link" href="/ui/register">Register another image</a>
+</nav>
+{% if items %}
+<div class="grid">
+{% for item in items %}
+  <article class="card">
+    <img src="{{ item.card.raw_image_url }}" alt="Captured card">
+    <p><strong>Collection:</strong> <a href="/ui/collections/{{ item.collection_id }}">{{ item.collection_name }}</a></p>
+    <p><strong>State:</strong> {{ item.card.card_state.value }}</p>
+    <p><strong>Expected:</strong> {{ item.card.expected_scryfall_id or "None" }}</p>
+    <p><strong>Received:</strong> {{ item.card.inducted_at }}</p>
+  </article>
+{% endfor %}
+</div>
+{% else %}
+<p>No cards are waiting for recognition.</p>
+{% endif %}
+{% endblock %}

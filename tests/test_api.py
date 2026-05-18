@@ -265,8 +265,13 @@ def test_exports_and_ui_smoke(client):
     ).text
     assert api.get("/").status_code == 200
     assert api.get("/ui/register").status_code == 200
+    assert api.get("/ui/recognition-queue").status_code == 200
     assert api.get(f"/ui/collections/{collection['collection_id']}").status_code == 200
     assert api.get(f"/ui/collections/{collection['collection_id']}/queue").status_code == 200
+    assert api.get(
+        f"/ui/collections/{collection['collection_id']}/recognition-queue",
+        follow_redirects=False,
+    ).status_code == 303
 
 
 def test_collection_detail_ui_exposes_exports_and_transfer_controls(client):
@@ -290,9 +295,29 @@ def test_collection_detail_ui_exposes_exports_and_transfer_controls(client):
     assert page.status_code == 200
     assert "Export trusted CSV" in page.text
     assert "Export unverified CSV" in page.text
+    assert "Review queue" in page.text
     assert "transfer-form" in page.text
     assert "batch-transfer-form" in page.text
     assert 'name="collector_number"' in page.text
+
+
+def test_sidebar_prioritizes_pending_review_work(client):
+    api, Session = client
+    zeta = create_collection(api, "Zeta")
+    alpha = create_collection(api, "Alpha")
+    create_collection(api, "Empty")
+    intake(api, alpha["collection_id"], image=b"alpha-one")
+    intake(api, alpha["collection_id"], image=b"alpha-two")
+    intake(api, zeta["collection_id"], image=b"zeta-one")
+    with Session() as db:
+        process_next_unprocessed_card(db)
+        process_next_unprocessed_card(db)
+        process_next_unprocessed_card(db)
+
+    page = api.get("/")
+    assert page.text.index("(2) Alpha") < page.text.index("(1) Zeta")
+    assert 'class="empty-review-queue"' in page.text
+    assert ">Empty" in page.text
 
 
 def test_review_ui_next_redirect_and_page(client, monkeypatch):
@@ -321,6 +346,8 @@ def test_review_ui_next_redirect_and_page(client, monkeypatch):
     page = api.get(response.headers["location"])
     assert page.status_code == 200
     assert "Submit review" in page.text
+    assert 'id="reference-panel" style="display: none;"' in page.text
+    assert 'submitReview.textContent = "Confirm";' in page.text
     assert 'const REFERENCE_NAME = "Known Card";' in page.text
 
 
@@ -343,12 +370,14 @@ def test_review_decision_verifies_or_removes_unreadable_from_queue(client):
     )
     assert response.status_code == 200
     assert response.json()["collection_card"]["source_unverified_card_id"] == verified["unverified_card_id"]
+    assert response.json()["next_ui_url"] == f"/ui/collections/{collection['collection_id']}/queue"
 
     unreadable_response = api.post(
         f"/unverified-cards/{unreadable['unverified_card_id']}/decision",
         json={"decision_kind": "unreadable"},
     )
     assert unreadable_response.status_code == 200
+    assert unreadable_response.json()["next_ui_url"] == "/"
     assert api.get(f"/collections/{collection['collection_id']}/review-cards/next").status_code == 404
 
 
