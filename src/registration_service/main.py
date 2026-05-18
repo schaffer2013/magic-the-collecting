@@ -1,3 +1,5 @@
+
+
 from __future__ import annotations
 
 import csv
@@ -9,7 +11,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import exists, func, select
@@ -34,22 +36,47 @@ from .schemas import (
     UnverifiedCardRead,
 )
 from .services import candidate_ids, create_unverified_card, raw_image_url, verify_unverified_card
-from .catalog import get_card_metadata, search_cards
+from .catalog import autocomplete_card_names, get_card_metadata, search_cards
 from .config import settings
 
 PACKAGE_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=str(PACKAGE_DIR / "templates"))
+import datetime
+import os
 logger = logging.getLogger(__name__)
 
-
+# --- LIFESPAN FUNCTION MUST BE DEFINED BEFORE APP ---
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
     yield
 
-
 app = FastAPI(title="Magic: The Collecting", version="0.2.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(PACKAGE_DIR / "static")), name="static")
+
+# --- LOG ENDPOINT AND HELPER ---
+def get_today_log_path():
+    # Assumes logs are written to a file with the date in the filename, e.g. logs/app-YYYY-MM-DD.log
+    log_dir = os.environ.get("LOG_DIR") or str(PACKAGE_DIR / ".." / "logs")
+    today = datetime.date.today().strftime("%Y-%m-%d")
+    for fname in os.listdir(log_dir):
+        if today in fname and fname.endswith(".log"):
+            return os.path.join(log_dir, fname)
+    return None
+
+@app.get("/logs/today", response_class=PlainTextResponse)
+def get_today_logs(request: Request):
+    client_host = request.client.host if request.client else None
+    if client_host not in ("127.0.0.1", "::1", "localhost"):
+        raise HTTPException(status_code=403, detail="Logs only available from localhost")
+    log_path = get_today_log_path()
+    if not log_path or not os.path.exists(log_path):
+        raise HTTPException(status_code=404, detail="Today's log file not found")
+    with open(log_path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+
 
 
 def error_payload(status_code: int, detail) -> dict:
@@ -97,13 +124,13 @@ def unverified_read(card: UnverifiedCard) -> UnverifiedCardRead:
 
 
 def summary_for_collection(db: Session, collection_id: str) -> CollectionSummaryRead:
-    counts = dict(
-        db.execute(
-            select(UnverifiedCard.card_state, func.count())
-            .where(UnverifiedCard.collection_id == collection_id)
-            .group_by(UnverifiedCard.card_state)
-        ).all()
-    )
+    # Build counts as a dict[CardState, int]
+    raw_counts = db.execute(
+        select(UnverifiedCard.card_state, func.count())
+        .where(UnverifiedCard.collection_id == collection_id)
+        .group_by(UnverifiedCard.card_state)
+    ).all()
+    counts = {row[0]: row[1] for row in raw_counts}
     trusted_count = db.scalar(
         select(func.count()).select_from(CollectionCard).where(CollectionCard.collection_id == collection_id)
     )
@@ -277,10 +304,9 @@ def create_review_decision(
         raise HTTPException(status_code=404, detail="unverified card not found")
     if db.scalar(select(ReviewDecision).where(ReviewDecision.unverified_card_id == unverified_card_id)) is not None:
         raise HTTPException(status_code=409, detail="unverified card already has a review decision")
-    if payload.decision_kind != ReviewDecisionKind.unreadable and (
-        payload.final_scryfall_id is None or payload.finish is None
-    ):
-        raise HTTPException(status_code=422, detail="final_scryfall_id and finish are required")
+    if payload.decision_kind != ReviewDecisionKind.unreadable:
+        if payload.final_scryfall_id is None or payload.finish is None:
+            raise HTTPException(status_code=422, detail="final_scryfall_id and finish are required")
     decision = ReviewDecision(
         unverified_card_id=unverified_card_id,
         decision_kind=payload.decision_kind,
@@ -290,6 +316,9 @@ def create_review_decision(
     db.add(decision)
     collection_card = None
     if payload.decision_kind != ReviewDecisionKind.unreadable:
+        # Only call with non-None values
+        assert payload.final_scryfall_id is not None
+        assert payload.finish is not None
         collection_card = verify_unverified_card(
             db, card, scryfall_id=payload.final_scryfall_id, finish=payload.finish
         )
@@ -307,6 +336,7 @@ def search_card_printings(
     set_code: str | None = Query(None, min_length=1),
     collector_number: str | None = Query(None, min_length=1),
     lang: str | None = Query(None, min_length=1),
+    limit: int = Query(25, ge=1, le=100),
 ) -> list[CardSearchResult]:
     return [
         CardSearchResult(**metadata.__dict__)
@@ -315,8 +345,16 @@ def search_card_printings(
             set_code=set_code,
             collector_number=collector_number,
             lang=lang,
+            limit=limit,
         )
     ]
+
+
+@app.get("/cards/autocomplete", response_model=list[str])
+def autocomplete_cards(
+    q: str = Query(..., min_length=2),
+) -> list[str]:
+    return autocomplete_card_names(q.strip())
 
 
 @app.get("/collections/{collection_id}/cards", response_model=list[CollectionCardRead])
@@ -490,14 +528,17 @@ def export_unverified_cards(collection_id: str, db: Session = Depends(get_db)) -
     return StreamingResponse(iter([buffer.getvalue()]), media_type="text/csv")
 
 
+
+# --- UI Collections List: root and /ui/collections ---
 @app.get("/", response_class=HTMLResponse)
+@app.get("/ui/collections", response_class=HTMLResponse)
 def ui_collections(request: Request, db: Session = Depends(get_db)):
     collections = list_collections(500, 0, db)
     summaries = {collection.collection_id: summary_for_collection(db, collection.collection_id) for collection in collections}
     return templates.TemplateResponse(
         request,
         "collections.html",
-        {"collections": collections, "summaries": summaries},
+        {"collections": collections, "summaries": summaries, "sidebar_collections": collections},
     )
 
 
@@ -515,6 +556,7 @@ def ui_collection_detail(
     collection = db.get(Collection, collection_id)
     if collection is None:
         raise HTTPException(status_code=404, detail="collection not found")
+    collections = list_collections(500, 0, db)
     return templates.TemplateResponse(
         request,
         "collection_detail.html",
@@ -525,7 +567,7 @@ def ui_collection_detail(
                 collection_id, q, set_code, collector_number, finish, scryfall_id, 500, 0, db
             ),
             "transfer_targets": [
-                item for item in list_collections(500, 0, db) if item.collection_id != collection_id
+                item for item in collections if item.collection_id != collection_id
             ],
             "filters": {
                 "q": q or "",
@@ -534,6 +576,7 @@ def ui_collection_detail(
                 "finish": finish or "",
                 "scryfall_id": scryfall_id or "",
             },
+            "sidebar_collections": collections,
         },
     )
 
@@ -544,7 +587,8 @@ def ui_queue(collection_id: str, request: Request, db: Session = Depends(get_db)
     if collection is None:
         raise HTTPException(status_code=404, detail="collection not found")
     cards = list_unverified_cards(collection_id, CardState.machine_recognized, 500, 0, db)
-    return templates.TemplateResponse(request, "queue.html", {"collection": collection, "cards": cards})
+    collections = list_collections(500, 0, db)
+    return templates.TemplateResponse(request, "queue.html", {"collection": collection, "cards": cards, "sidebar_collections": collections})
 
 
 @app.get("/ui/collections/{collection_id}/review/next")
@@ -559,7 +603,8 @@ def ui_next_review(
 
 @app.get("/ui/register", response_class=HTMLResponse)
 def ui_register(request: Request, db: Session = Depends(get_db)):
-    return templates.TemplateResponse(request, "register.html", {"collections": list_collections(500, 0, db)})
+    collections = list_collections(500, 0, db)
+    return templates.TemplateResponse(request, "register.html", {"collections": collections, "sidebar_collections": collections})
 
 
 @app.get("/ui/unverified-cards/{unverified_card_id}/review", response_class=HTMLResponse)
@@ -578,3 +623,22 @@ def ui_review(unverified_card_id: str, request: Request, db: Session = Depends(g
         "review.html",
         {"card": unverified_read(card), "collection": card.collection, "reference": reference},
     )
+
+
+# --- Ensure at least one default collection exists on startup ---
+@app.on_event("startup")
+def ensure_default_collection():
+    from sqlalchemy.orm import Session
+    from .models import Collection
+    from .database import Session as DBSession
+    db: Session = DBSession()
+    try:
+        count = db.query(Collection).count()
+        if count == 0:
+            default = Collection(name="Default Collection", description="Auto-created default collection.")
+            db.add(default)
+            db.commit()
+            db.refresh(default)
+            logger.info(f"Created default collection: {default.collection_id}")
+    finally:
+        db.close()
