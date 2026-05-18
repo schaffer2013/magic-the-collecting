@@ -442,6 +442,9 @@ Array of unverified-card objects.
 Returns one `machine_recognized` card from a specific collection for human
 review.
 
+Current local-first behavior does not reserve or lock the selected card. A card
+leaves the review queue only after a review decision is recorded.
+
 #### Path parameters
 
 | Parameter | Type | Meaning |
@@ -680,4 +683,3 @@ The following decisions are not yet specified tightly enough to guarantee a
 stable implementation contract:
 
 1. Authentication scheme and credential roles.
-2. Whether review-card selection should reserve a card for a reviewer.
