@@ -9,6 +9,12 @@ services:
       - "55432:5432"
     volumes:
       - test_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U magic_test -d magic_collecting_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
   test-app:
     build: .
     env_file: .env.test
@@ -17,7 +23,8 @@ services:
     volumes:
       - test_images:/app/data/raw-images
     depends_on:
-      - test-db
+      test-db:
+        condition: service_healthy
 volumes:
   test_pgdata:
   test_images:
