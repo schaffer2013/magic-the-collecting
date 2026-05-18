@@ -310,6 +310,7 @@ def test_review_ui_next_redirect_and_page(client):
     page = api.get(response.headers["location"])
     assert page.status_code == 200
     assert "Submit review" in page.text
+    assert 'id="card-search-set-code"' in page.text
 
 
 def test_review_decision_verifies_or_removes_unreadable_from_queue(client):
@@ -344,19 +345,24 @@ def test_card_search_endpoint(client, monkeypatch):
     api, _ = client
     monkeypatch.setattr(
         "registration_service.main.search_cards",
-        lambda query: [
+        lambda query, **filters: [
             CardMetadata(
                 scryfall_id="search-id",
                 name="Llanowar Elves",
                 set_code="7ed",
                 collector_number="253",
                 image_uri="https://example.invalid/card.jpg",
+                lang="en",
             )
         ],
     )
-    response = api.get("/cards/search", params={"q": "llanowar elves"})
+    response = api.get(
+        "/cards/search",
+        params={"q": "llanowar elves", "set_code": "7ed", "collector_number": "253", "lang": "en"},
+    )
     assert response.status_code == 200
     assert response.json()[0]["scryfall_id"] == "search-id"
+    assert response.json()[0]["lang"] == "en"
 
 
 def test_verified_image_cleanup_respects_age(client):

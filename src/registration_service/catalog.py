@@ -31,8 +31,22 @@ def get_card_metadata(scryfall_id: str) -> CardMetadata:
     )
 
 
-def search_cards(query: str, limit: int = 10) -> list[CardMetadata]:
-    result = scrython.cards.Search(q=query, unique="prints")
+def search_cards(
+    query: str,
+    *,
+    set_code: str | None = None,
+    collector_number: str | None = None,
+    lang: str | None = None,
+    limit: int = 10,
+) -> list[CardMetadata]:
+    filters = [query]
+    if set_code:
+        filters.append(f"set:{set_code}")
+    if collector_number:
+        filters.append(f"cn:{collector_number}")
+    if lang:
+        filters.append(f"lang:{lang}")
+    result = scrython.cards.Search(q=" ".join(filters), unique="prints")
     cards = []
     for payload in result.data[:limit]:
         image_uris = payload.image_uris if hasattr(payload, "image_uris") else None

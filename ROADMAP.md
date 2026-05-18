@@ -90,12 +90,14 @@ Goal: improve reliability, observability, and operator confidence.
 - [ ] Add authentication and authorization for sorter clients and human users.
 - [x] Define and implement a consistent API error envelope.
 - [x] Add pagination to large list endpoints.
-- [ ] Decide whether review selection needs reservation/locking semantics.
+- [x] Decide whether review selection needs reservation/locking semantics.
+  Current decision: not yet. The local single-reviewer workflow uses simple
+  selection without reservation; revisit when concurrent reviewers become real.
 - [x] Decide repeated-verification behavior for already verified evidence.
 - [ ] Add structured logs and metrics for intake, processing, review, retries,
   queue depth, and image cleanup. Core intake/processing/verification/transfer
   logs are in place; broader metrics remain.
-- [ ] Add backup/export guidance for the production database and raw-image store.
+- [x] Add backup/export guidance for the production database and raw-image store.
 - [x] Add upload constraints and validation for supported image formats/sizes.
 
 ## Tier 3 — Improve collection operations
@@ -107,8 +109,8 @@ Goal: make the service pleasant beyond the minimum registration workflow.
 - [x] Add collection search/filtering by name, set, collector number, finish, and
   Scryfall ID.
 - [x] Add bulk card-selection patterns in the collection UI.
-- [ ] Add richer reviewer search for exact printing resolution.
-- [ ] Add optional retained-image policy configuration.
+- [x] Add richer reviewer search for exact printing resolution.
+- [x] Add optional retained-image policy configuration.
 
 ## Tier 4 — Integrate with the sorter ecosystem
 
@@ -124,11 +126,13 @@ Goal: connect the service cleanly to the physical machine workflow.
 
 ## Recommended next implementation order
 
-1. Prove the Docker/Postgres prod-like and test stacks.
-2. Replace placeholder catalog metadata with real Scryfall lookup.
-3. Wire real machine recognition into the DB worker.
-4. Complete browser-driven review submission and side-by-side reference images.
-5. Add auth, error envelope, and metrics before broader use.
+For the current local-first phase:
+
+1. Improve unreadable-card follow-up handling beyond the minimal decision state.
+2. Expand structured metrics and operator visibility around queue depth,
+   processing, retries, and cleanup.
+3. Keep sorter integration separate until that product track is ready to connect.
+4. Add authentication near the end, before any broader-than-local deployment.
 
 ## Key files for a future handoff
 
