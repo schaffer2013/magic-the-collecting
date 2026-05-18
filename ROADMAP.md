@@ -49,8 +49,6 @@ Implemented:
 
 Known intentional gaps:
 
-- Docker/Postgres stacks have not yet been exercised in this environment because
-  Docker is unavailable locally
 - no authentication yet
 - review decisions are persisted, but unreadable-card follow-up workflows are
   still intentionally minimal
@@ -60,9 +58,9 @@ Known intentional gaps:
 - [x] Keep `API.md` updated whenever the public contract changes.
 - [x] Keep meaningful work off `main` until it is ready to merge.
 - [x] Maintain separate prod-like and test local environments.
-- [ ] Verify Compose stacks end-to-end on a machine with Docker installed.
+- [x] Verify Compose stacks end-to-end on a machine with Docker installed.
 - [x] Add a host-run local workflow for the current pre-Docker phase.
-- [ ] Add a short contributor/dev workflow section once the first full Docker run
+- [x] Add a short contributor/dev workflow section once the first full Docker run
   has been proven.
 
 ## Tier 1 — Finish the first usable vertical slice

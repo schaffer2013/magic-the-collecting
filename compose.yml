@@ -9,6 +9,12 @@ services:
       - "5432:5432"
     volumes:
       - prod_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U magic -d magic_collecting"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
   app:
     build: .
     env_file: .env.prod
@@ -17,7 +23,8 @@ services:
     volumes:
       - prod_images:/app/data/raw-images
     depends_on:
-      - db
+      db:
+        condition: service_healthy
   worker:
     build: .
     command: python -c "from registration_service.worker import run_worker_forever; run_worker_forever()"
@@ -25,7 +32,9 @@ services:
     volumes:
       - prod_images:/app/data/raw-images
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+    restart: unless-stopped
 volumes:
   prod_pgdata:
   prod_images:

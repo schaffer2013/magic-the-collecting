@@ -18,11 +18,9 @@ collections.
 
 The project is currently usable in two ways:
 
-- **host-run local mode:** current practical path while Docker is not yet
-  installed on the working machine; SQLite-backed, app on `http://localhost:8080`
-- **future prod-like/test Docker stacks:** already scaffolded with `compose.yml`
-  and `compose.test.yml`, but still waiting for end-to-end validation on a
-  Docker-capable machine
+- **host-run local mode:** SQLite-backed, app on `http://localhost:8080`
+- **prod-like/test Docker stacks:** validated local PostgreSQL-backed stacks
+  defined by `compose.yml` and `compose.test.yml`
 
 ### Host-run local mode
 
@@ -40,8 +38,7 @@ Start the app and background worker together:
 .\entrypoints\start-local-host.ps1 -Seed
 ```
 
-This uses the default local SQLite database and local `data/` paths. It is the
-right path for the present development session while Docker is unavailable.
+This uses the default local SQLite database and local `data/` paths.
 
 ### Docker stacks
 
@@ -93,6 +90,16 @@ Run tests:
 `run-test-env.ps1` starts only the test Compose stack before running the suite.
 The tests themselves also use isolated test settings and temporary storage, so
 they do not touch the prod-like stack or its raw-image volume.
+
+## Contributor workflow
+
+For normal local work:
+
+1. Create or switch to a focused working branch.
+2. Use `.\scripts\run-test-env.ps1` for the parent app test suite.
+3. Use `.\entrypoints\start-local.ps1 -Build` when you need the full
+   PostgreSQL-backed app plus worker stack.
+4. Keep `API.md` synchronized with any public contract changes before merging.
 
 ## UI
 
