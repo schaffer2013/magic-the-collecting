@@ -55,8 +55,10 @@ changing their identity.
   `details` is `null` when no extra machine-readable context exists. Validation
   failures use `http_422` with an `issues` array inside `details`.
 - Raw images are service-owned after intake.
-- Verified raw images are not deleted immediately. They become eligible for
-  garbage collection only after they are at least 24 hours old.
+- Verified raw images are not deleted immediately. By default they become
+  eligible for garbage collection only after they are at least 24 hours old;
+  deployments may raise that retention window with
+  `RAW_IMAGE_MIN_RETENTION_HOURS`.
 - Duplicate intake detection is scoped to one collection and is based on exact
   image-content hashing. A duplicate image submitted again within the active
   hash window returns `409 Conflict`. Hash entries older than roughly one hour
@@ -553,8 +555,9 @@ trusted collection-card instance.
   source unverified card.
 - A second verification attempt for the same unverified card is rejected with
   `409 Conflict`; it does not create another trusted collection-card instance.
-- The raw image remains retained until it is at least 24 hours old and later
-  removed by garbage collection.
+- The raw image remains retained until it exceeds the configured retention
+  window, which defaults to 24 hours, and is later removed by garbage
+  collection.
 
 #### Response `200 OK`
 
@@ -641,6 +644,9 @@ printing.
 | Parameter | Type | Required | Meaning |
 |---|---|---:|---|
 | `q` | string | yes | Scryfall search query. |
+| `set_code` | string | no | Restrict results to one set code. |
+| `collector_number` | string | no | Restrict results to one collector number. |
+| `lang` | string | no | Restrict results to one Scryfall language code. |
 
 #### Response `200 OK`
 
@@ -651,7 +657,8 @@ printing.
     "name": "Llanowar Elves",
     "set_code": "7ed",
     "collector_number": "253",
-    "image_uri": "https://..."
+    "image_uri": "https://...",
+    "lang": "en"
   }
 ]
 ```
@@ -665,6 +672,7 @@ printing.
 | `set_code` | string | Printing set code. |
 | `collector_number` | string | Printing collector number. |
 | `image_uri` | string or null | Canonical card image URL when available. |
+| `lang` | string or null | Scryfall language code when available. |
 
 ## 7. Still-open contract items
 

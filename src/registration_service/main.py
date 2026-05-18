@@ -302,8 +302,21 @@ def create_review_decision(
 
 
 @app.get("/cards/search", response_model=list[CardSearchResult])
-def search_card_printings(q: str = Query(..., min_length=1)) -> list[CardSearchResult]:
-    return [CardSearchResult(**metadata.__dict__) for metadata in search_cards(q)]
+def search_card_printings(
+    q: str = Query(..., min_length=1),
+    set_code: str | None = Query(None, min_length=1),
+    collector_number: str | None = Query(None, min_length=1),
+    lang: str | None = Query(None, min_length=1),
+) -> list[CardSearchResult]:
+    return [
+        CardSearchResult(**metadata.__dict__)
+        for metadata in search_cards(
+            q,
+            set_code=set_code,
+            collector_number=collector_number,
+            lang=lang,
+        )
+    ]
 
 
 @app.get("/collections/{collection_id}/cards", response_model=list[CollectionCardRead])

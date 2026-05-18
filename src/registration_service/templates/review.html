@@ -14,13 +14,14 @@
     <p><a href="{{ card.overlay_image_url }}">View bounding-box overlay</a></p>
     {% endif %}
   </div>
-  <div>
+  <div id="reference-panel">
     <h2>Expected reference</h2>
     {% if reference and reference.image_uri %}
-    <img class="review-image" src="{{ reference.image_uri }}" alt="Expected Scryfall reference">
-    <p>{{ reference.name }} · {{ reference.set_code | upper }} {{ reference.collector_number }}</p>
+    <img id="reference-image" class="review-image" src="{{ reference.image_uri }}" alt="Expected Scryfall reference">
+    <p id="reference-label">{{ reference.name }} · {{ reference.set_code | upper }} {{ reference.collector_number }}{% if reference.lang %} · {{ reference.lang | upper }}{% endif %}</p>
     {% else %}
-    <p>No expected reference image available.</p>
+    <img id="reference-image" class="review-image hidden" alt="Selected Scryfall reference">
+    <p id="reference-label">No expected reference image available.</p>
     {% endif %}
   </div>
   <section>
@@ -47,6 +48,20 @@
         Find another printing
         <input id="card-search" placeholder="Search Scryfall printings">
       </label>
+      <div class="filter-grid compact">
+        <label>
+          Set code
+          <input id="card-search-set-code" placeholder="m11">
+        </label>
+        <label>
+          Collector no.
+          <input id="card-search-collector-number" placeholder="146">
+        </label>
+        <label>
+          Language
+          <input id="card-search-lang" placeholder="en">
+        </label>
+      </div>
       <div id="card-search-results" class="search-results"></div>
       <label>
         Finish
@@ -79,7 +94,12 @@ const decisionKind = document.querySelector("#decision-kind");
 const finalScryfallId = document.querySelector("#final-scryfall-id");
 const finish = document.querySelector("#finish");
 const cardSearch = document.querySelector("#card-search");
+const cardSearchSetCode = document.querySelector("#card-search-set-code");
+const cardSearchCollectorNumber = document.querySelector("#card-search-collector-number");
+const cardSearchLang = document.querySelector("#card-search-lang");
 const cardSearchResults = document.querySelector("#card-search-results");
+const referenceImage = document.querySelector("#reference-image");
+const referenceLabel = document.querySelector("#reference-label");
 
 decisionKind.addEventListener("change", () => {
   const unreadable = decisionKind.value === "unreadable";
@@ -87,26 +107,58 @@ decisionKind.addEventListener("change", () => {
   finish.required = !unreadable;
 });
 
-cardSearch.addEventListener("input", async () => {
+let searchRequestSerial = 0;
+
+function selectReference(card) {
+  finalScryfallId.value = card.scryfall_id;
+  referenceLabel.textContent = `${card.name} · ${card.set_code.toUpperCase()} ${card.collector_number}${card.lang ? ` · ${card.lang.toUpperCase()}` : ""}`;
+  if (card.image_uri) {
+    referenceImage.src = card.image_uri;
+    referenceImage.classList.remove("hidden");
+  } else {
+    referenceImage.removeAttribute("src");
+    referenceImage.classList.add("hidden");
+  }
+}
+
+async function runCardSearch() {
   const query = cardSearch.value.trim();
   if (query.length < 2) {
     cardSearchResults.replaceChildren();
     return;
   }
-  const response = await fetch(`/cards/search?q=${encodeURIComponent(query)}`);
+  const params = new URLSearchParams({q: query});
+  if (cardSearchSetCode.value.trim()) params.set("set_code", cardSearchSetCode.value.trim());
+  if (cardSearchCollectorNumber.value.trim()) params.set("collector_number", cardSearchCollectorNumber.value.trim());
+  if (cardSearchLang.value.trim()) params.set("lang", cardSearchLang.value.trim());
+  const requestSerial = ++searchRequestSerial;
+  const response = await fetch(`/cards/search?${params.toString()}`);
   if (!response.ok) return;
   const cards = await response.json();
+  if (requestSerial !== searchRequestSerial) return;
   cardSearchResults.replaceChildren(...cards.map((card) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "search-result";
-    button.textContent = `${card.name} · ${card.set_code.toUpperCase()} ${card.collector_number}`;
+    if (card.image_uri) {
+      const image = document.createElement("img");
+      image.src = card.image_uri;
+      image.alt = "";
+      button.appendChild(image);
+    }
+    const text = document.createElement("span");
+    text.textContent = `${card.name} · ${card.set_code.toUpperCase()} ${card.collector_number}${card.lang ? ` · ${card.lang.toUpperCase()}` : ""}`;
+    button.appendChild(text);
     button.addEventListener("click", () => {
-      finalScryfallId.value = card.scryfall_id;
+      selectReference(card);
       cardSearchResults.replaceChildren();
     });
     return button;
   }));
+}
+
+[cardSearch, cardSearchSetCode, cardSearchCollectorNumber, cardSearchLang].forEach((input) => {
+  input.addEventListener("input", runCardSearch);
 });
 
 decisionForm.addEventListener("submit", async (event) => {

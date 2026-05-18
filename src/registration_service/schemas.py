@@ -68,6 +68,7 @@ class CardSearchResult(BaseModel):
     set_code: str
     collector_number: str
     image_uri: str | None
+    lang: str | None
 
 
 class CollectionCardRead(BaseModel):

@@ -95,7 +95,7 @@ Goal: improve reliability, observability, and operator confidence.
 - [ ] Add structured logs and metrics for intake, processing, review, retries,
   queue depth, and image cleanup. Core intake/processing/verification/transfer
   logs are in place; broader metrics remain.
-- [ ] Add backup/export guidance for the production database and raw-image store.
+- [x] Add backup/export guidance for the production database and raw-image store.
 - [x] Add upload constraints and validation for supported image formats/sizes.
 
 ## Tier 3 — Improve collection operations
@@ -107,8 +107,8 @@ Goal: make the service pleasant beyond the minimum registration workflow.
 - [x] Add collection search/filtering by name, set, collector number, finish, and
   Scryfall ID.
 - [x] Add bulk card-selection patterns in the collection UI.
-- [ ] Add richer reviewer search for exact printing resolution.
-- [ ] Add optional retained-image policy configuration.
+- [x] Add richer reviewer search for exact printing resolution.
+- [x] Add optional retained-image policy configuration.
 
 ## Tier 4 — Integrate with the sorter ecosystem
 
