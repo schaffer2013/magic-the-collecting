@@ -135,6 +135,27 @@ moves them into the `machine_recognized` queue with ordered candidate IDs,
 confidence, and review evidence. Canonical verified-card metadata is resolved
 through Scrython.
 
+Verified raw images are retained for at least 24 hours by default before worker
+cleanup may remove them. Set `RAW_IMAGE_MIN_RETENTION_HOURS` in `.env.prod` when
+you want a longer local grace period.
+
+## Backups
+
+For a local Docker deployment, treat the PostgreSQL data and raw-image volume as
+separate assets:
+
+```powershell
+docker compose exec db pg_dump -U magic magic_collecting > magic_collecting.sql
+docker run --rm -v mtg-collection_prod_images:/data -v ${PWD}:/backup alpine `
+  tar -czf /backup/raw-images.tar.gz -C /data .
+```
+
+Restore the SQL dump into a fresh database with `psql`, and restore
+`raw-images.tar.gz` into the `prod_images` volume before relying on image-backed
+review history. The trusted-card CSV export is useful for portability, but it is
+not a full backup because it does not include unverified evidence or review
+history.
+
 ## API
 
 See [`API.md`](API.md) for the consumer-ready API contract. Keep it updated with
