@@ -1,0 +1,36 @@
+# Git and editor state
+.git
+.gitignore
+.vscode
+.idea
+
+# Python caches and virtual environments
+__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.venv
+venv
+env
+*.egg-info
+build
+dist
+
+# Local secrets and environment-specific config
+.env
+.env.*
+!.env.prod.example
+!.env.test.example
+
+# Runtime data must live in Docker volumes or external services, not images
+registration_service.db
+*.sqlite
+*.sqlite3
+data
+pgdata
+raw-images
+
+# Test and local-only files
+tests
+.coverage
