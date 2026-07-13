@@ -49,11 +49,18 @@ cp .env.prod.example .env.prod
 cp .env.test.example .env.test
 ```
 
-Start the prod-like stack:
+Start the prod-like stack from a local build:
 
 ```bash
 ./entrypoints/start-local.ps1 -Build
 ```
+
+The production-like stack stores PostgreSQL data in the `prod_pgdata` Docker
+volume and raw card images in the `prod_images` Docker volume. Those volumes are
+not part of the application image, so rebuilding, tagging, or pushing the image
+does not overwrite collection data. On container startup, `docker-entrypoint.sh`
+runs Alembic migrations when `DB_AUTO_MIGRATE=true` so a new empty database is
+instantiated automatically and an existing database is migrated in place.
 
 Seed a default collection in a running local environment:
 
@@ -72,6 +79,37 @@ Reset only test data:
 ```bash
 ./scripts/reset-test-env.ps1
 ```
+
+### Building and deploying the Docker image
+
+Set the image name you want to publish. You can add this to `.env.prod` or pass
+it in the shell when running Compose:
+
+```bash
+APP_IMAGE=registry.example.com/magic-the-collecting:0.2.0
+```
+
+Build and push the app/worker image without including runtime databases or image
+uploads:
+
+```bash
+docker compose --env-file .env.prod build app worker
+docker compose --env-file .env.prod push app worker
+```
+
+On the deployment host, keep the same `compose.yml` and `.env.prod`, then pull
+and start the published image without rebuilding it on that host:
+
+```bash
+docker compose --env-file .env.prod pull app worker
+docker compose --env-file .env.prod up -d --no-build
+```
+
+For single-container SQLite experiments, mount `/app/data` to durable storage.
+The image defaults to `sqlite:////app/data/registration_service.db`, which lets
+the entrypoint create the database on first run without baking the database file
+into the image. Production-like deployments should continue to use PostgreSQL via
+`DATABASE_URL`.
 
 ## Local development
 

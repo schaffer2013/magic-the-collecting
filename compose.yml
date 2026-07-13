@@ -16,6 +16,7 @@ services:
       retries: 12
       start_period: 10s
   app:
+    image: ${APP_IMAGE:-magic-the-collecting:local}
     build: .
     env_file: .env.prod
     ports:
@@ -26,6 +27,7 @@ services:
       db:
         condition: service_healthy
   worker:
+    image: ${APP_IMAGE:-magic-the-collecting:local}
     build: .
     command: python -c "from registration_service.worker import run_worker_forever; run_worker_forever()"
     env_file: .env.prod
