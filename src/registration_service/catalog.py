@@ -15,6 +15,7 @@ class CardMetadata:
     collector_number: str
     image_uri: str | None = None
     lang: str | None = None
+    oracle_id: str | None = None
 
 
 @lru_cache(maxsize=2048)
@@ -30,6 +31,7 @@ def get_card_metadata(scryfall_id: str) -> CardMetadata:
         collector_number=card.collector_number,
         image_uri=image_uri,
         lang=card.lang,
+        oracle_id=getattr(card, "oracle_id", None),
     )
 
 
@@ -61,6 +63,7 @@ def search_cards(
                 collector_number=payload.collector_number,
                 image_uri=image_uris.get("normal") if isinstance(image_uris, dict) else None,
                 lang=payload.lang,
+                oracle_id=getattr(payload, "oracle_id", None),
             )
         )
     return cards

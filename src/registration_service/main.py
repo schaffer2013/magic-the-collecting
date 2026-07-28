@@ -20,6 +20,7 @@ from .database import get_db, init_db
 from .images import parse_bounding_box
 from .models import CardState, Collection, CollectionCard, UnverifiedCard
 from .models import ReviewDecision, ReviewDecisionKind
+from .moxfield import MoxfieldError, compare_collection_to_moxfield_deck
 from .schemas import (
     BatchTransferCreate,
     CollectionCardRead,
@@ -27,6 +28,8 @@ from .schemas import (
     CollectionRead,
     CollectionSummaryRead,
     HumanVerificationCreate,
+    MoxfieldDeckCompareCreate,
+    MoxfieldDeckCompareRead,
     ReviewDecisionCreate,
     CardSearchResult,
     ReviewCardRead,
@@ -171,6 +174,23 @@ def get_collection_summary(collection_id: str, db: Session = Depends(get_db)) ->
     if db.get(Collection, collection_id) is None:
         raise HTTPException(status_code=404, detail="collection not found")
     return summary_for_collection(db, collection_id)
+
+
+@app.post("/collections/{collection_id}/moxfield/compare", response_model=MoxfieldDeckCompareRead)
+def compare_moxfield_deck(
+    collection_id: str,
+    payload: MoxfieldDeckCompareCreate,
+    db: Session = Depends(get_db),
+) -> MoxfieldDeckCompareRead:
+    if db.get(Collection, collection_id) is None:
+        raise HTTPException(status_code=404, detail="collection not found")
+    try:
+        availability = compare_collection_to_moxfield_deck(db, collection_id, payload.deck_url)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except MoxfieldError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return MoxfieldDeckCompareRead.model_validate(availability)
 
 
 @app.post(
@@ -578,6 +598,52 @@ def ui_collection_detail(
                 "scryfall_id": scryfall_id or "",
             },
             "sidebar_collections": collections,
+            "moxfield_result": None,
+            "moxfield_deck_url": "",
+            "moxfield_error": None,
+        },
+    )
+
+
+@app.get("/ui/collections/{collection_id}/moxfield", response_class=HTMLResponse)
+def ui_collection_moxfield_compare(
+    collection_id: str,
+    request: Request,
+    deck_url: str = Query(""),
+    db: Session = Depends(get_db),
+):
+    collection = db.get(Collection, collection_id)
+    if collection is None:
+        raise HTTPException(status_code=404, detail="collection not found")
+    collections = list_collections(500, 0, db)
+    result = None
+    error = None
+    if deck_url:
+        try:
+            result = compare_collection_to_moxfield_deck(db, collection_id, deck_url)
+        except (ValueError, MoxfieldError) as exc:
+            error = str(exc)
+    return templates.TemplateResponse(
+        request,
+        "collection_detail.html",
+        {
+            "collection": collection,
+            "summary": summary_for_collection(db, collection_id),
+            "cards": list_collection_cards(collection_id, None, None, None, None, None, 500, 0, db),
+            "transfer_targets": [
+                item for item in collections if item.collection_id != collection_id
+            ],
+            "filters": {
+                "q": "",
+                "set_code": "",
+                "collector_number": "",
+                "finish": "",
+                "scryfall_id": "",
+            },
+            "sidebar_collections": collections,
+            "moxfield_result": result,
+            "moxfield_deck_url": deck_url,
+            "moxfield_error": error,
         },
     )
 

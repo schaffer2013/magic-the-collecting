@@ -95,6 +95,11 @@ th, td { padding: .75rem; border-bottom: 1px solid #ddd; text-align: left; }
 .printing-preview { display: flex; align-items: center; gap: .75rem; font-size: .9rem; }
 .printing-thumb { width: 3.5rem; height: 4.9rem; object-fit: cover; border-radius: .25rem; flex-shrink: 0; }
 .printing-controls { display: flex; gap: .5rem; flex-wrap: wrap; }
+.moxfield-compare { display: grid; gap: .75rem; margin: 1rem 0; padding: 1rem 0; border-top: 1px solid #ddd; border-bottom: 1px solid #ddd; }
+.moxfield-compare h2 { margin: 0; font-size: 1.15rem; }
+.moxfield-compare input { min-width: min(28rem, 100%); }
+.missing-row td:last-child { font-weight: 700; color: #8b1e16; }
+.available-row { color: #4f5a48; }
 @media (max-width: 700px) {
   .review-layout { grid-template-columns: 1fr; }
   main { padding: .75rem; }

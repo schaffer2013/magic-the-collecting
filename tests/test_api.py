@@ -2,6 +2,12 @@ from __future__ import annotations
 
 from registration_service.maintenance import cleanup_verified_raw_images
 from registration_service.catalog import CardMetadata
+from registration_service.moxfield import (
+    MoxfieldDeck,
+    MoxfieldDeckCard,
+    parse_moxfield_deck_id,
+    parse_moxfield_deck_payload,
+)
 from registration_service.models import CardState, CollectionCard, Finish, UnverifiedCard, ValidationSource, utcnow
 from registration_service.config import settings
 from registration_service.services import process_next_unprocessed_card
@@ -158,6 +164,109 @@ def test_collection_cards_support_filters(client):
     assert len(api.get(f"/collections/{collection['collection_id']}/cards", params={"collector_number": "253"}).json()) == 1
     assert len(api.get(f"/collections/{collection['collection_id']}/cards", params={"finish": "foil"}).json()) == 1
     assert len(api.get(f"/collections/{collection['collection_id']}/cards", params={"scryfall_id": "elves-id"}).json()) == 1
+
+
+def test_parse_moxfield_deck_id_accepts_public_urls_and_ids():
+    assert parse_moxfield_deck_id("https://moxfield.com/decks/6V3ZFwq_70qc-vJulguKWA") == "6V3ZFwq_70qc-vJulguKWA"
+    assert parse_moxfield_deck_id("6V3ZFwq_70qc-vJulguKWA") == "6V3ZFwq_70qc-vJulguKWA"
+
+
+def test_parse_moxfield_deck_payload_accepts_nested_boards_shape():
+    deck = parse_moxfield_deck_payload(
+        "deck-id",
+        {
+            "name": "Nested",
+            "boards": {
+                "mainboard": {
+                    "cards": {
+                        "unique": {
+                            "quantity": 2,
+                            "card": {
+                                "name": "Swamp",
+                                "scryfall_id": "swamp-printing",
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    )
+    assert deck.name == "Nested"
+    assert deck.cards == [MoxfieldDeckCard("Swamp", 2, None, "swamp-printing", "mainboard")]
+
+
+def test_moxfield_compare_matches_collection_by_oracle_id(client, monkeypatch):
+    api, Session = client
+    collection = create_collection(api)
+    with Session() as db:
+        db.add_all(
+            [
+                CollectionCard(
+                    collection_id=collection["collection_id"],
+                    scryfall_id="opt-print-a",
+                    name="Opt",
+                    set_code="dom",
+                    collector_number="60",
+                    finish=Finish.nonfoil,
+                    validation_source=ValidationSource.human,
+                    validated_at=utcnow(),
+                ),
+                CollectionCard(
+                    collection_id=collection["collection_id"],
+                    scryfall_id="bolt-print-a",
+                    name="Lightning Bolt",
+                    set_code="clu",
+                    collector_number="141",
+                    finish=Finish.nonfoil,
+                    validation_source=ValidationSource.human,
+                    validated_at=utcnow(),
+                ),
+            ]
+        )
+        db.commit()
+
+    monkeypatch.setattr(
+        "registration_service.moxfield.fetch_moxfield_deck",
+        lambda deck_url: MoxfieldDeck(
+            deck_id="deck-id",
+            name="Spells",
+            cards=[
+                MoxfieldDeckCard("Opt", 2, "oracle-opt", "opt-print-b", "mainboard"),
+                MoxfieldDeckCard("Lightning Bolt", 1, "oracle-bolt", "bolt-print-b", "mainboard"),
+                MoxfieldDeckCard("Counterspell", 1, "oracle-counterspell", "counterspell-print", "mainboard"),
+            ],
+        ),
+    )
+    oracle_ids = {
+        "opt-print-a": "oracle-opt",
+        "bolt-print-a": "oracle-bolt",
+    }
+    monkeypatch.setattr(
+        "registration_service.moxfield.get_card_metadata",
+        lambda scryfall_id: CardMetadata(
+            scryfall_id=scryfall_id,
+            name=scryfall_id,
+            set_code="tst",
+            collector_number="1",
+            oracle_id=oracle_ids[scryfall_id],
+        ),
+    )
+
+    response = api.post(
+        f"/collections/{collection['collection_id']}/moxfield/compare",
+        json={"deck_url": "https://moxfield.com/decks/deck-id"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["deck_name"] == "Spells"
+    assert payload["requested_card_count"] == 4
+    assert payload["owned_card_count"] == 2
+    assert payload["missing_card_count"] == 2
+    by_name = {card["name"]: card for card in payload["cards"]}
+    assert by_name["Opt"]["owned_quantity"] == 1
+    assert by_name["Opt"]["missing_quantity"] == 1
+    assert by_name["Lightning Bolt"]["missing_quantity"] == 0
+    assert by_name["Counterspell"]["missing_quantity"] == 1
 
 
 def test_worker_moves_one_card_to_machine_recognized(client):

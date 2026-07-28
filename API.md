@@ -179,6 +179,81 @@ Returns state counts for one collection.
 | `human_verified_unverified_count` | integer | Number of evidence records already human-verified. |
 | `trusted_collection_card_count` | integer | Number of trusted owned card instances in the collection. |
 
+### `POST /collections/{collection_id}/moxfield/compare`
+
+Fetches a public Moxfield deck and compares its requested cards against trusted
+cards in one collection. Matching is by Scryfall `oracle_id`, so any owned
+printing of the same underlying card counts toward the deck requirement.
+
+#### Path parameters
+
+| Parameter | Type | Meaning |
+|---|---|---|
+| `collection_id` | GUID | Collection to compare against the deck. |
+
+#### Request body
+
+```json
+{
+  "deck_url": "https://moxfield.com/decks/6V3ZFwq_70qc-vJulguKWA"
+}
+```
+
+#### Request fields
+
+| Field | Type | Required | Meaning |
+|---|---|---:|---|
+| `deck_url` | string | yes | Public Moxfield deck URL, or the deck ID portion from that URL. |
+
+#### Response `200 OK`
+
+```json
+{
+  "collection_id": "2f79ac7b-c85e-4d4c-a3a3-f1ab1cc079d7",
+  "deck_url": "https://moxfield.com/decks/6V3ZFwq_70qc-vJulguKWA",
+  "deck_id": "6V3ZFwq_70qc-vJulguKWA",
+  "deck_name": "Example Deck",
+  "requested_card_count": 100,
+  "owned_card_count": 87,
+  "missing_card_count": 13,
+  "cards": [
+    {
+      "name": "Opt",
+      "oracle_id": "3d2f18f2-203e-4a23-b7e8-56011f00a8b4",
+      "requested_quantity": 2,
+      "owned_quantity": 1,
+      "missing_quantity": 1
+    }
+  ]
+}
+```
+
+#### Response fields
+
+| Field | Type | Meaning |
+|---|---|---|
+| `collection_id` | GUID | Collection compared. |
+| `deck_url` | string | Submitted Moxfield deck URL or deck ID. |
+| `deck_id` | string | Moxfield deck ID used for lookup. |
+| `deck_name` | string or null | Deck name returned by Moxfield. |
+| `requested_card_count` | integer | Total requested deck quantity after oracle-ID grouping. |
+| `owned_card_count` | integer | Requested quantity covered by owned cards in the collection. |
+| `missing_card_count` | integer | Requested quantity not covered by owned cards. |
+| `cards` | array | Per-card availability rows sorted with missing cards first. |
+| `cards[].name` | string | Card name from the Moxfield deck entry. |
+| `cards[].oracle_id` | string | Scryfall oracle ID used for matching. |
+| `cards[].requested_quantity` | integer | Quantity requested by the deck. |
+| `cards[].owned_quantity` | integer | Number of owned trusted cards with the same oracle ID. |
+| `cards[].missing_quantity` | integer | Additional copies needed. |
+
+#### Errors
+
+| Status | Meaning |
+|---|---|
+| `404 Not Found` | Collection does not exist. |
+| `422 Unprocessable Entity` | Deck URL is empty or not a Moxfield deck URL. |
+| `502 Bad Gateway` | Moxfield could not be fetched or returned an upstream error. |
+
 ### `GET /collections/{collection_id}/cards`
 
 Lists trusted collection-card instances currently belonging to one collection.

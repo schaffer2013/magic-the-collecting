@@ -29,6 +29,33 @@ class CollectionSummaryRead(BaseModel):
     trusted_collection_card_count: int
 
 
+class MoxfieldDeckCompareCreate(BaseModel):
+    deck_url: str = Field(min_length=1, max_length=500)
+
+
+class MoxfieldDeckCardAvailabilityRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    name: str
+    oracle_id: str
+    requested_quantity: int
+    owned_quantity: int
+    missing_quantity: int
+
+
+class MoxfieldDeckCompareRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    collection_id: str
+    deck_url: str
+    deck_id: str
+    deck_name: str | None
+    requested_card_count: int
+    owned_card_count: int
+    missing_card_count: int
+    cards: list[MoxfieldDeckCardAvailabilityRead]
+
+
 class UnverifiedCardRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

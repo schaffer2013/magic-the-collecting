@@ -12,6 +12,41 @@
   <span>{{ summary.unprocessed_count }} unprocessed</span>
   <span>{{ summary.machine_recognized_count }} ready</span>
 </section>
+<section class="moxfield-compare">
+  <h2>Moxfield deck check</h2>
+  <form class="inline-actions" method="get" action="/ui/collections/{{ collection.collection_id }}/moxfield">
+    <label>
+      Deck URL
+      <input name="deck_url" value="{{ moxfield_deck_url }}" placeholder="https://moxfield.com/decks/...">
+    </label>
+    <button type="submit">Check deck</button>
+  </form>
+  {% if moxfield_error %}
+  <p role="alert">{{ moxfield_error }}</p>
+  {% endif %}
+  {% if moxfield_result %}
+  <div class="stats">
+    <span>{{ moxfield_result.owned_card_count }} covered</span>
+    <span>{{ moxfield_result.missing_card_count }} missing</span>
+    <span>{{ moxfield_result.requested_card_count }} requested</span>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Card</th><th>Need</th><th>Own</th><th>Missing</th></tr></thead>
+      <tbody>
+      {% for card in moxfield_result.cards %}
+        <tr class="{% if card.missing_quantity == 0 %}available-row{% else %}missing-row{% endif %}">
+          <td>{{ card.name }}</td>
+          <td>{{ card.requested_quantity }}</td>
+          <td>{{ card.owned_quantity }}</td>
+          <td>{{ card.missing_quantity }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
 <form class="filter-grid" method="get">
   <label>
     Name
